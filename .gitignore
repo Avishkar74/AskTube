@@ -49,6 +49,8 @@ outputs/*.txt
 outputs/*.md
 outputs/*.mmd
 !outputs/.gitkeep
+input.txt
+trd.txt
 
 # Keep example outputs
 !outputs/example_*
