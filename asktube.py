@@ -21,6 +21,7 @@ from summary_generator import summarize_text
 from detail_explanation_generator import generate_notes
 from mindmap_generator import generate_mindmap
 from cache_manager import CacheManager
+from pdf_exporter import PDFExporter
 
 
 class AskTube:
@@ -346,6 +347,9 @@ Examples:
     )
     parser.add_argument(
         "--skip-mindmap", action="store_true", help="Skip mind map generation"
+    )
+    parser.add_argument(
+        "--generate-pdf", action="store_true", help="Generate PDF combining all outputs"
     )
     parser.add_argument(
         "--output-prefix",

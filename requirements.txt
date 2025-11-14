@@ -18,5 +18,8 @@ youtube-transcript-api>=0.6.0
 # Google Generative AI
 google-generativeai>=0.3.0
 
+# PDF generation (optional but recommended)
+weasyprint>=60.0
+
 # Optional: For better console output on Windows
 colorama>=0.4.6
