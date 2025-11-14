@@ -1,0 +1,17 @@
+This video showcases Z.AI Chat, a free, open-source AI tool that builds full-stack applications, and demonstrates how to integrate user authentication using Supabase. The tool leverages GLM models to generate code and integrate features, as exemplified by creating an Excel-to-JSON converter website.
+
+*   **Z.AI Chat Capabilities:** Generates AI-powered slides, social media banners, code, and full-stack applications.
+*   **Demonstration:** An Excel-to-JSON converter website is built with database integration and authentication.
+*   **Technologies Used:** Next.js, Tailwind CSS, Shad CN UI, Prisma with SQLite (initially), and Supabase.
+*   **Process:**
+    *   Prompt for application is entered.
+    *   AI generates the project, including a to-do list.
+    *   AI installs libraries, builds UI, and checks for errors.
+    *   Website is tested and code reviewed.
+    *   UI is customized.
+    *   Supabase is integrated for database and authentication.
+*   **Supabase Integration:**
+    *   **Database Setup:** SQL queries (provided by a "GLM agent") are used to modify the database within Supabase. The "history" table is updated to include a "user ID" column.
+    *   **User Account Creation & Login:** Users can sign up and log in to the website.
+    *   **Verification:** User creation is confirmed in the Supabase dashboard.
+*   **Outcome:** The website now has full Supabase authentication.

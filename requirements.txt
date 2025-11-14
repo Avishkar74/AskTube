@@ -1,0 +1,22 @@
+# AskTube - YouTube Learning Assistant
+# Python Dependencies
+
+# Core dependencies
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# LangChain and LLM
+langchain>=0.1.0
+langchain-google-genai>=1.0.0
+langchain-core>=0.1.0
+langchain-community>=0.0.20
+
+# YouTube transcript extraction
+youtube-transcript-api>=0.6.0
+
+# Google Generative AI
+google-generativeai>=0.3.0
+
+# Optional: For better console output on Windows
+colorama>=0.4.6
