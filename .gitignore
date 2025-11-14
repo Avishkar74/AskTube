@@ -1,2 +1,4 @@
 working_steps/
 outputs/
+input.txt
+.env
