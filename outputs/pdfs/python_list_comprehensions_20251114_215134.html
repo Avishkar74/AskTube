@@ -1,31 +1,12 @@
-"""
-Enhanced PDF export module with beautiful UI and advanced features.
 
-Generates professional PDFs with summary, notes, mind maps, and more.
-Supports dark mode, table of contents, and interactive elements.
-"""
-import json
-from pathlib import Path
-from typing import Optional, Dict, Any, List
-from datetime import datetime
-import hashlib
-
-
-class EnhancedPDFExporter:
-    """Export learning materials to beautifully styled PDF/HTML format."""
-
-    def __init__(self, output_dir: str = "outputs/pdfs"):
-        """Initialize PDF exporter.
-
-        Args:
-            output_dir: Directory to save PDF files
-        """
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-
-    def _get_enhanced_css(self) -> str:
-        """Get enhanced CSS with modern styling."""
-        return """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Study Materials - Mastering Python List Comprehensions</title>
+    <style>
+        
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
 
         @page {
@@ -543,229 +524,201 @@ class EnhancedPDFExporter:
                 transform: none;
             }
         }
-        """
-
-    def _generate_enhanced_html(
-        self,
-        video_id: str,
-        video_url: Optional[str] = None,
-        video_title: Optional[str] = None,
-        summary: Optional[str] = None,
-        notes: Optional[Dict[str, str]] = None,
-        mindmap: Optional[str] = None,
-        transcript: Optional[str] = None,
-    ) -> str:
-        """Generate enhanced HTML with modern UI."""
-        html_parts = []
-
-        # Calculate stats
-        word_count = len(transcript.split()) if transcript else 0
-        section_count = len([k for k, v in (notes or {}).items() if v]) if notes else 0
-
-        # HTML header
-        html_parts.append(f"""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Study Materials - {video_title or video_id}</title>
-    <style>
-        {self._get_enhanced_css()}
+        
     </style>
 </head>
 <body>
-""")
 
-        # Enhanced header
-        html_parts.append(f"""
     <div class="header">
         <h1>📚 Study Materials</h1>
-        <div class="subtitle">{video_title or 'YouTube Learning Assistant'}</div>
+        <div class="subtitle">Mastering Python List Comprehensions</div>
         <div class="metadata">
             <div class="meta-item">
                 <span class="meta-icon">🎥</span>
-                <span>{video_id}</span>
+                <span>python_list_comprehensions</span>
             </div>
-""")
 
-        if video_url:
-            html_parts.append(f"""
             <div class="meta-item">
                 <span class="meta-icon">🔗</span>
                 <span>Video Link</span>
             </div>
-""")
 
-        html_parts.append(f"""
             <div class="meta-item">
                 <span class="meta-icon">📅</span>
-                <span>{datetime.now().strftime('%B %d, %Y')}</span>
+                <span>November 14, 2025</span>
             </div>
             <div class="meta-item">
                 <span class="meta-icon">⏰</span>
-                <span>{datetime.now().strftime('%I:%M %p')}</span>
+                <span>09:51 PM</span>
             </div>
         </div>
     </div>
-""")
 
-        # Stats bar
-        if word_count or section_count:
-            html_parts.append(f"""
     <div class="stats-bar">
         <div class="stat-item">
-            <div class="stat-number">{word_count:,}</div>
+            <div class="stat-number">401</div>
             <div class="stat-label">Words</div>
         </div>
         <div class="stat-item">
-            <div class="stat-number">{section_count}</div>
+            <div class="stat-number">7</div>
             <div class="stat-label">Sections</div>
         </div>
         <div class="stat-item">
-            <div class="stat-number">{len(mindmap.split('\\n')) if mindmap else 0}</div>
+            <div class="stat-number">1</div>
             <div class="stat-label">Mind Map Nodes</div>
         </div>
     </div>
-""")
 
-        # Table of Contents
-        toc_items = []
-        if summary:
-            toc_items.append('<li>📝 <a href="#summary">Summary</a></li>')
-        if notes:
-            toc_items.append('<li>📖 <a href="#notes">Detailed Study Notes</a></li>')
-        if mindmap:
-            toc_items.append('<li>🧠 <a href="#mindmap">Mind Map</a></li>')
-        if transcript:
-            toc_items.append('<li>📄 <a href="#transcript">Transcript</a></li>')
-
-        if toc_items:
-            html_parts.append("""
     <div class="toc">
         <h2>📑 Table of Contents</h2>
         <ul>
-""")
-            html_parts.extend(f"            {item}\n" for item in toc_items)
-            html_parts.append("""        </ul>
+            <li>📝 <a href="#summary">Summary</a></li>
+            <li>📖 <a href="#notes">Detailed Study Notes</a></li>
+            <li>🧠 <a href="#mindmap">Mind Map</a></li>
+            <li>📄 <a href="#transcript">Transcript</a></li>
+        </ul>
     </div>
-""")
 
-        # Summary section
-        if summary:
-            html_parts.append(f"""
     <div class="section" id="summary">
         <h1><span class="section-icon">📝</span>Summary</h1>
         <div class="summary-box">
-            {self._format_text_to_html(summary)}
+            <p>This comprehensive tutorial covers Python list comprehensions in depth.</p>
+<p>Key learning points:</p>
+<ul>
+<li>Understand the syntax and structure</li>
+<li>Learn when to use comprehensions vs loops</li>
+<li>Master nested comprehensions</li>
+<li>Apply comprehensions to real-world problems</li>
+</ul>
         </div>
     </div>
-""")
 
-        # Detailed notes section
-        if notes:
-            html_parts.append("""
     <div class="page-break"></div>
     <div class="section" id="notes">
         <h1><span class="section-icon">📖</span>Detailed Study Notes</h1>
-""")
 
-            # Key Concepts as grid
-            if "key_concepts" in notes and notes["key_concepts"]:
-                concepts = notes["key_concepts"].split("\n\n")
-                html_parts.append("""
         <div class="note-item">
             <h2>🎯 Key Concepts</h2>
             <div class="concepts-grid">
-""")
-                for concept in concepts:
-                    if ":" in concept:
-                        title, desc = concept.split(":", 1)
-                        html_parts.append(f"""
+
                 <div class="concept-card">
-                    <div class="concept-title">{title.strip()}</div>
-                    <div>{desc.strip()}</div>
+                    <div class="concept-title">List Comprehension</div>
+                    <div>A concise way to create lists using a single line of code</div>
                 </div>
-""")
-                html_parts.append("""
+
+                <div class="concept-card">
+                    <div class="concept-title">Syntax</div>
+                    <div>[expression for item in iterable if condition]</div>
+                </div>
+
+                <div class="concept-card">
+                    <div class="concept-title">Filter Condition</div>
+                    <div>Optional if clause to filter items</div>
+                </div>
+
+                <div class="concept-card">
+                    <div class="concept-title">Expression</div>
+                    <div>The transformation applied to each item</div>
+                </div>
+
             </div>
         </div>
-""")
 
-            # Detailed Notes
-            if "detailed_notes" in notes and notes["detailed_notes"]:
-                html_parts.append(f"""
         <div class="note-item">
             <h2>📚 Detailed Notes</h2>
-            {self._format_text_to_html(notes["detailed_notes"])}
+            <p>List comprehensions provide a concise way to create lists.</p>
+<p>Key features:</p>
+<ul>
+<li>More compact than traditional loops</li>
+<li>Often more readable for simple transformations</li>
+<li>Can include conditional logic</li>
+<li>Support nested iterations</li>
+</ul>
+<p>Best practices:</p>
+<ul>
+<li>Keep them simple and readable</li>
+<li>Use meaningful variable names</li>
+<li>Break complex logic into multiple steps</li>
+</ul>
         </div>
-""")
 
-            # Examples
-            if "examples" in notes and notes["examples"]:
-                html_parts.append("""
         <div class="note-item">
             <h2>💡 Examples</h2>
-""")
-                examples = notes["examples"].split("\n")
-                for i, example in enumerate(examples, 1):
-                    if example.strip():
-                        html_parts.append(f"""
-            <div class="example-box">
-                <span class="example-number">Example {i}</span>
-                {example.strip()}
-            </div>
-""")
-                html_parts.append("        </div>\n")
 
-            # Memory Tricks
-            if "memory_tricks" in notes and notes["memory_tricks"]:
-                tricks = notes["memory_tricks"].split("\n")
-                html_parts.append("""
+            <div class="example-box">
+                <span class="example-number">Example 1</span>
+                Example 1: Basic comprehension
+            </div>
+
+            <div class="example-box">
+                <span class="example-number">Example 2</span>
+                squares = [x**2 for x in range(10)]
+            </div>
+
+            <div class="example-box">
+                <span class="example-number">Example 4</span>
+                Example 2: With filtering
+            </div>
+
+            <div class="example-box">
+                <span class="example-number">Example 5</span>
+                evens = [x for x in range(20) if x % 2 == 0]
+            </div>
+
+            <div class="example-box">
+                <span class="example-number">Example 7</span>
+                Example 3: String transformation
+            </div>
+
+            <div class="example-box">
+                <span class="example-number">Example 8</span>
+                upper_words = [word.upper() for word in ['hello', 'world']]
+            </div>
+        </div>
+
         <div class="note-item">
             <h2>🧠 Memory Tricks & Mnemonics</h2>
-""")
-                for trick in tricks:
-                    if trick.strip():
-                        html_parts.append(f"""
-            <div class="memory-trick">{trick.strip()}</div>
-""")
-                html_parts.append("        </div>\n")
 
-            # Common Mistakes
-            if "common_mistakes" in notes and notes["common_mistakes"]:
-                mistakes = notes["common_mistakes"].split("\n")
-                html_parts.append("""
+            <div class="memory-trick">Think of the pattern: [WHAT for EACH in WHERE if CONDITION]</div>
+
+            <div class="memory-trick">Remember: Brackets make it a LIST comprehension</div>
+
+            <div class="memory-trick">Mnemonic: "LIST" - Looping Inside Simple Transformations</div>
+        </div>
+
         <div class="note-item">
             <h2>⚠️ Common Mistakes</h2>
-""")
-                for mistake in mistakes:
-                    if mistake.strip():
-                        html_parts.append(f"""
-            <div class="mistake-box">{mistake.strip()}</div>
-""")
-                html_parts.append("        </div>\n")
 
-            # Sticky Notes
-            if "sticky_notes" in notes and notes["sticky_notes"]:
-                html_parts.append("""
+            <div class="mistake-box">Forgetting the square brackets</div>
+
+            <div class="mistake-box">Making comprehensions too complex</div>
+
+            <div class="mistake-box">Nesting too many levels (max 2-3)</div>
+
+            <div class="mistake-box">Using comprehensions when a loop is clearer</div>
+        </div>
+
         <h2>📌 Quick Revision - Sticky Notes</h2>
         <div class="sticky-wall">
-""")
-                sticky_items = notes["sticky_notes"].split("\n")
-                for item in sticky_items:
-                    if item.strip():
-                        html_parts.append(f"""
-            <div class="sticky-note">{item.strip()}</div>
-""")
-                html_parts.append("""        </div>
-""")
 
-            html_parts.append("    </div>\n")
+            <div class="sticky-note">Brackets required</div>
 
-        # Mind map section
-        if mindmap:
-            html_parts.append(f"""
+            <div class="sticky-note">More compact than loops</div>
+
+            <div class="sticky-note">Can include conditions</div>
+
+            <div class="sticky-note">Keep it simple</div>
+
+            <div class="sticky-note">Readability counts</div>
+
+            <div class="sticky-note">Use for transformations</div>
+
+            <div class="sticky-note">Avoid side effects</div>
+
+            <div class="sticky-note">Max 2-3 levels deep</div>
+        </div>
+    </div>
+
     <div class="page-break"></div>
     <div class="section" id="mindmap">
         <h1><span class="section-icon">🧠</span>Mind Map</h1>
@@ -774,187 +727,7 @@ class EnhancedPDFExporter:
                 <strong>Visualize this mind map:</strong> Copy the code below and paste it into
                 <a href="https://mermaid.live" target="_blank" class="mermaid-link">Mermaid Live Editor</a>
             </p>
-            <div class="mindmap-box">{mindmap}</div>
-        </div>
-    </div>
-""")
-
-        # Transcript section
-        if transcript:
-            truncated = transcript[:5000] + (
-                "\n\n... [Transcript truncated for PDF. Full transcript available separately]"
-                if len(transcript) > 5000
-                else ""
-            )
-            html_parts.append(f"""
-    <div class="page-break"></div>
-    <div class="section" id="transcript">
-        <h1><span class="section-icon">📄</span>Transcript</h1>
-        <div class="transcript-container">
-            <div class="transcript-box">
-                {self._format_text_to_html(truncated)}
-            </div>
-        </div>
-    </div>
-""")
-
-        # Footer
-        html_parts.append(f"""
-    <div class="footer">
-        <div class="footer-logo">🤖</div>
-        <p>Generated by <strong>AskTube</strong> - YouTube Learning Assistant</p>
-        <p>Powered by Google Gemini AI | <a href="https://github.com/yourusername/asktube">GitHub</a></p>
-        <p style="margin-top: 10px; font-size: 11px;">
-            Document ID: {hashlib.md5(f"{video_id}{datetime.now()}".encode()).hexdigest()[:8]}
-        </p>
-    </div>
-</body>
-</html>
-""")
-
-        return "".join(html_parts)
-
-    def _format_text_to_html(self, text: str) -> str:
-        """Convert plain text to HTML with enhanced formatting."""
-        # Handle bullet points
-        lines = text.split("\n")
-        formatted_lines = []
-        in_list = False
-
-        for line in lines:
-            stripped = line.strip()
-
-            # Check for bullet points
-            if stripped.startswith("•") or stripped.startswith("-") or stripped.startswith("*"):
-                if not in_list:
-                    formatted_lines.append("<ul>")
-                    in_list = True
-                formatted_lines.append(f"<li>{stripped[1:].strip()}</li>")
-            else:
-                if in_list:
-                    formatted_lines.append("</ul>")
-                    in_list = False
-                if stripped:
-                    formatted_lines.append(f"<p>{stripped}</p>")
-
-        if in_list:
-            formatted_lines.append("</ul>")
-
-        return "\n".join(formatted_lines)
-
-    def export_to_pdf(
-        self,
-        video_id: str,
-        video_url: Optional[str] = None,
-        video_title: Optional[str] = None,
-        summary: Optional[str] = None,
-        notes: Optional[Dict[str, str]] = None,
-        mindmap: Optional[str] = None,
-        transcript: Optional[str] = None,
-        output_filename: Optional[str] = None,
-    ) -> str:
-        """Export materials to enhanced PDF/HTML."""
-        # Generate HTML
-        html_content = self._generate_enhanced_html(
-            video_id, video_url, video_title, summary, notes, mindmap, transcript
-        )
-
-        # Determine output filename
-        if not output_filename:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_filename = f"{video_id}_{timestamp}.pdf"
-
-        output_path = self.output_dir / output_filename
-
-        try:
-            # Try using weasyprint
-            from weasyprint import HTML, CSS
-
-            HTML(string=html_content).write_pdf(
-                output_path,
-                stylesheets=[CSS(string=self._get_enhanced_css())]
-            )
-            print(f"[OK] PDF generated: {output_path}")
-            return str(output_path)
-
-        except ImportError:
-            # Fallback: save as HTML
-            print("[INFO] weasyprint not installed. Saving as HTML.")
-            print("       Install with: pip install weasyprint")
-
-            html_path = output_path.with_suffix(".html")
-            html_path.write_text(html_content, encoding="utf-8")
-            print(f"[OK] HTML generated: {html_path}")
-            return str(html_path)
-
-        except Exception as e:
-            # Another fallback
-            print(f"[WARN] PDF generation failed ({e}). Saving as HTML.")
-
-            html_path = output_path.with_suffix(".html")
-            html_path.write_text(html_content, encoding="utf-8")
-            print(f"[OK] HTML fallback generated: {html_path}")
-            return str(html_path)
-
-
-# Maintain backward compatibility
-PDFExporter = EnhancedPDFExporter
-
-
-if __name__ == "__main__":
-    # Test the enhanced version
-    exporter = EnhancedPDFExporter()
-
-    test_summary = """This comprehensive tutorial covers Python list comprehensions in depth.
-
-Key learning points:
-- Understand the syntax and structure
-- Learn when to use comprehensions vs loops
-- Master nested comprehensions
-- Apply comprehensions to real-world problems"""
-
-    test_notes = {
-        "summary": "A deep dive into Python list comprehensions and their practical applications.",
-        "detailed_notes": """List comprehensions provide a concise way to create lists.
-
-Key features:
-- More compact than traditional loops
-- Often more readable for simple transformations
-- Can include conditional logic
-- Support nested iterations
-
-Best practices:
-- Keep them simple and readable
-- Use meaningful variable names
-- Break complex logic into multiple steps""",
-        "key_concepts": """List Comprehension: A concise way to create lists using a single line of code
-
-Syntax: [expression for item in iterable if condition]
-
-Filter Condition: Optional if clause to filter items
-
-Expression: The transformation applied to each item""",
-        "examples": """Example 1: Basic comprehension
-squares = [x**2 for x in range(10)]
-
-Example 2: With filtering
-evens = [x for x in range(20) if x % 2 == 0]
-
-Example 3: String transformation
-upper_words = [word.upper() for word in ['hello', 'world']]""",
-        "memory_tricks": """Think of the pattern: [WHAT for EACH in WHERE if CONDITION]
-
-Remember: Brackets make it a LIST comprehension
-
-Mnemonic: "LIST" - Looping Inside Simple Transformations""",
-        "common_mistakes": """Forgetting the square brackets
-Making comprehensions too complex
-Nesting too many levels (max 2-3)
-Using comprehensions when a loop is clearer""",
-        "sticky_notes": """Brackets required\nMore compact than loops\nCan include conditions\nKeep it simple\nReadability counts\nUse for transformations\nAvoid side effects\nMax 2-3 levels deep""",
-    }
-
-    test_mindmap = """mindmap
+            <div class="mindmap-box">mindmap
   root((List Comprehensions))
     Syntax
       Brackets []
@@ -975,16 +748,27 @@ Using comprehensions when a loop is clearer""",
       Keep simple
       Meaningful names
       Avoid nesting
-      Use when appropriate"""
+      Use when appropriate</div>
+        </div>
+    </div>
 
-    output = exporter.export_to_pdf(
-        video_id="python_list_comprehensions",
-        video_url="https://youtube.com/watch?v=example",
-        video_title="Mastering Python List Comprehensions",
-        summary=test_summary,
-        notes=test_notes,
-        mindmap=test_mindmap,
-        transcript="This is a sample transcript about Python list comprehensions..." * 50
-    )
+    <div class="page-break"></div>
+    <div class="section" id="transcript">
+        <h1><span class="section-icon">📄</span>Transcript</h1>
+        <div class="transcript-container">
+            <div class="transcript-box">
+                <p>This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...This is a sample transcript about Python list comprehensions...</p>
+            </div>
+        </div>
+    </div>
 
-    print(f"\n[OK] Enhanced PDF/HTML generated: {output}")
+    <div class="footer">
+        <div class="footer-logo">🤖</div>
+        <p>Generated by <strong>AskTube</strong> - YouTube Learning Assistant</p>
+        <p>Powered by Google Gemini AI | <a href="https://github.com/yourusername/asktube">GitHub</a></p>
+        <p style="margin-top: 10px; font-size: 11px;">
+            Document ID: b8e087b3
+        </p>
+    </div>
+</body>
+</html>

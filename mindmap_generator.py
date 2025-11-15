@@ -10,27 +10,9 @@ from typing import Optional, List
 # Suppress FutureWarning from transformers/torch
 warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
 
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import PromptTemplate
-from langchain_core.output_parsers import StrOutputParser
+from llm_backend import get_backend, auto_select_backend
 
 
-def _get_api_key() -> str:
-    load_dotenv()
-    api_key = (
-        os.getenv("GOOGLE_API_KEY")
-        or os.getenv("google_api_key")
-        or os.getenv("GEMINI_API_KEY")
-        or os.getenv("gemini_api_key")
-    )
-    if api_key and " " in api_key:
-        api_key = api_key.split()[0]
-    if not api_key:
-        raise RuntimeError(
-            "Missing GOOGLE_API_KEY (also checked GEMINI_API_KEY) in environment/.env."
-        )
-    return api_key
 
 
 def _read_text(path: Path) -> str:
@@ -54,17 +36,9 @@ def _chunk_text(text: str, max_chars: int) -> List[str]:
     return [c for c in chunks if c]
 
 
-def _build_chain(
-    model: str, api_key: str, max_output_tokens: int = 512, temperature: float = 0.3
-):
-    llm = ChatGoogleGenerativeAI(
-        model=model,
-        google_api_key=api_key,
-        max_output_tokens=max_output_tokens,
-        temperature=temperature,
-    )
-    template = """
-You are an expert at creating clear, hierarchical mind maps using Mermaid syntax.
+def _build_prompt(content: str) -> str:
+    """Build mind map generation prompt."""
+    return f"""You are an expert at creating clear, hierarchical mind maps using Mermaid syntax.
 
 Your task: Analyze the transcript and create a comprehensive mind map using Mermaid mindmap syntax.
 
@@ -104,29 +78,9 @@ TRANSCRIPT:
 {content}
 ---
 
-Remember: Output ONLY the Mermaid mindmap code. Start with "mindmap" and use proper indentation.
-"""
-    prompt = PromptTemplate.from_template(template)
-    return prompt | llm | StrOutputParser()
+Remember: Output ONLY the Mermaid mindmap code. Start with "mindmap" and use proper indentation."""
 
 
-def _invoke_with_backoff(
-    chain, content: str, retries: int = 6, initial_backoff: float = 2.0
-) -> str:
-    for attempt in range(retries):
-        try:
-            return chain.invoke({"content": content})
-        except Exception as e:
-            msg = str(e)
-            if "429" in msg or "Resource exhausted" in msg:
-                sleep_s = initial_backoff * (2**attempt) + random.uniform(0, 0.4)
-                print(
-                    f"Rate limited (429). Retrying in {sleep_s:.1f}s... [{attempt+1}/{retries}]"
-                )
-                time.sleep(sleep_s)
-                continue
-            raise
-    raise RuntimeError("Exceeded retry attempts from rate limiting (429)")
 
 
 def _clean_mermaid_output(raw: str) -> str:
@@ -160,47 +114,48 @@ def _clean_mermaid_output(raw: str) -> str:
 
 def generate_mindmap(
     text: str,
-    model: str = "gemini-2.0-flash-lite",
+    backend_type: str = "ollama",
+    model: Optional[str] = None,
     per_chunk_chars: int = 8000,
     max_output_tokens: int = 512,
-    retries: int = 6,
-    initial_backoff: float = 2.0,
+    temperature: float = 0.3,
 ) -> str:
     """Generate a Mermaid mindmap from text.
 
     Args:
         text: Input text/transcript
-        model: Gemini model name
+        backend_type: "ollama" or "gemini"
+        model: Model name (optional, uses backend defaults)
         per_chunk_chars: Max characters per chunk (0 to disable chunking)
         max_output_tokens: Max output tokens per API call
-        retries: Number of retry attempts on rate limiting
-        initial_backoff: Initial backoff time in seconds
+        temperature: Generation temperature
 
     Returns:
         Mermaid mindmap syntax as string
     """
-    api_key = _get_api_key()
-    chain = _build_chain(model, api_key, max_output_tokens=max_output_tokens)
+    backend = get_backend(backend_type, model)
 
     if per_chunk_chars and len(text) > per_chunk_chars:
         # For long content, create a summary first, then mind map from summary
         chunks = _chunk_text(text, per_chunk_chars)
-        print(f"Processing {len(chunks)} chunks, will synthesize mind map from key points")
+        print(f"[INFO] Processing {len(chunks)} chunks, will synthesize mind map from key points")
 
         # Extract key points from each chunk
         key_points = []
         for idx, c in enumerate(chunks, 1):
-            print(f"Extracting key points from chunk {idx}/{len(chunks)}")
+            print(f"[INFO] Extracting key points from chunk {idx}/{len(chunks)}")
             summary_prompt = f"Extract 3-5 key points from this content as a bulleted list:\n\n{c}"
-            points = _invoke_with_backoff(chain, summary_prompt, retries=retries, initial_backoff=initial_backoff)
+            points = backend.generate(summary_prompt, max_tokens=max_output_tokens, temperature=temperature)
             key_points.append(points)
 
         # Create mind map from combined key points
         combined_text = "\n\n".join(key_points)
-        print("Generating mind map from key points...")
-        raw = _invoke_with_backoff(chain, combined_text, retries=retries, initial_backoff=initial_backoff)
+        print("[INFO] Generating mind map from key points...")
+        prompt = _build_prompt(combined_text)
+        raw = backend.generate(prompt, max_tokens=max_output_tokens, temperature=temperature)
     else:
-        raw = _invoke_with_backoff(chain, text, retries=retries, initial_backoff=initial_backoff)
+        prompt = _build_prompt(text)
+        raw = backend.generate(prompt, max_tokens=max_output_tokens, temperature=temperature)
 
     return _clean_mermaid_output(raw)
 
@@ -219,10 +174,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Path to write Mermaid mind map",
     )
     parser.add_argument(
+        "--backend",
+        type=str,
+        default="ollama",
+        choices=["ollama", "gemini"],
+        help="LLM backend to use (default: ollama)",
+    )
+    parser.add_argument(
         "--model",
         type=str,
-        default="gemini-2.0-flash-lite",
-        help="Gemini model name",
+        default=None,
+        help="Model name (default: backend-specific defaults)",
     )
     parser.add_argument(
         "--chunk-chars",
@@ -237,13 +199,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Max output tokens per call",
     )
     parser.add_argument(
-        "--retries", type=int, default=6, help="Retries on 429 errors"
-    )
-    parser.add_argument(
-        "--initial-backoff",
+        "--temperature",
         type=float,
-        default=2.0,
-        help="Initial backoff seconds for rate limit",
+        default=0.3,
+        help="Generation temperature (default: 0.3)",
     )
 
     args = parser.parse_args(argv)
@@ -256,11 +215,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         text = _read_text(input_path)
         mindmap = generate_mindmap(
             text,
+            backend_type=args.backend,
             model=args.model,
             per_chunk_chars=args.chunk_chars,
             max_output_tokens=args.max_output_tokens,
-            retries=args.retries,
-            initial_backoff=args.initial_backoff,
+            temperature=args.temperature,
         )
 
         output_path.write_text(mindmap, encoding="utf-8")

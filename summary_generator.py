@@ -6,27 +6,9 @@ import random
 from pathlib import Path
 from typing import Optional, List
 
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import PromptTemplate
-from langchain_core.output_parsers import StrOutputParser
+from llm_backend import get_backend, auto_select_backend
 
 
-def _get_api_key() -> str:
-	load_dotenv()
-	api_key = (
-		os.getenv("GOOGLE_API_KEY")
-		or os.getenv("google_api_key")
-		or os.getenv("GEMINI_API_KEY")
-		or os.getenv("gemini_api_key")
-	)
-	if api_key and " " in api_key:
-		api_key = api_key.split()[0]
-	if not api_key:
-		raise RuntimeError(
-			"Missing GOOGLE_API_KEY in environment or .env (also checked GEMINI_API_KEY)."
-		)
-	return api_key
 
 
 def _read_text(path: Path) -> str:
@@ -50,92 +32,73 @@ def _chunk_text(text: str, max_chars: int) -> List[str]:
 	return [c for c in chunks if c]
 
 
-def _build_summarizer(
-	model: str,
-	api_key: str,
-	max_output_tokens: int = 384,
-	temperature: float = 0.2,
-):
-	llm = ChatGoogleGenerativeAI(
-		model=model,
-		google_api_key=api_key,
-		max_output_tokens=max_output_tokens,
-		temperature=temperature,
-	)
-	prompt = PromptTemplate.from_template(
-		"""
-		You are a precise, concise technical summarizer.
-		Summarize the following content for a general audience:
+def _build_prompt(content: str) -> str:
+	"""Build summarization prompt."""
+	return f"""You are a precise, concise technical summarizer.
+Summarize the following content for a general audience:
 
-		- Provide a brief overview (1-2 sentences)
-		- Bullet the key points and notable details
-		- Call out any steps, processes, or tools
-		- Keep the total under ~250-300 words
+- Provide a brief overview (1-2 sentences)
+- Bullet the key points and notable details
+- Call out any steps, processes, or tools
+- Keep the total under ~250-300 words
 
-		Content:
-		---
-		{content}
-		---
-		"""
-	)
-	return prompt | llm | StrOutputParser()
+Content:
+---
+{content}
+---
+"""
 
 
-def _invoke_with_backoff(
-	chain,
-	content: str,
-	retries: int = 6,
-	initial_backoff: float = 2.0,
-) -> str:
-	for attempt in range(retries):
-		try:
-			return chain.invoke({"content": content})
-		except Exception as e:
-			msg = str(e)
-			if "429" in msg or "Resource exhausted" in msg:
-				sleep_s = initial_backoff * (2 ** attempt) + random.uniform(0, 0.5)
-				print(
-					f"Rate limited (429). Retrying in {sleep_s:.1f}s... [{attempt+1}/{retries}]"
-				)
-				time.sleep(sleep_s)
-				continue
-			raise
-	raise RuntimeError("Exceeded retry attempts due to rate limits (429)")
 
 
 def summarize_text(
 	text: str,
-	model: str = "gemini-2.0-flash-lite",
+	backend_type: str = "ollama",
+	model: Optional[str] = None,
 	per_chunk_chars: int = 6000,
 	max_output_tokens: int = 384,
-	retries: int = 6,
-	initial_backoff: float = 2.0,
+	temperature: float = 0.2,
 ) -> str:
-	api_key = _get_api_key()
-	chain = _build_summarizer(
-		model, api_key, max_output_tokens=max_output_tokens, temperature=0.2
-	)
+	"""Summarize text using specified backend.
 
+	Args:
+		text: Text to summarize
+		backend_type: "ollama" or "gemini"
+		model: Model name (optional, uses backend defaults)
+		per_chunk_chars: Max characters per chunk (0 disables chunking)
+		max_output_tokens: Max tokens in response
+		temperature: Generation temperature
+
+	Returns:
+		Summary text
+	"""
+	# Get backend
+	backend = get_backend(backend_type, model)
+
+	# Handle chunking for long text
 	if per_chunk_chars and len(text) > per_chunk_chars:
 		chunks = _chunk_text(text, per_chunk_chars)
-		partial_summaries = [
-			_invoke_with_backoff(
-				chain, c, retries=retries, initial_backoff=initial_backoff
-			)
-			for c in chunks
-		]
+		partial_summaries = []
+
+		for i, chunk in enumerate(chunks):
+			print(f"[INFO] Summarizing chunk {i+1}/{len(chunks)}...")
+			prompt = _build_prompt(chunk)
+			summary = backend.generate(prompt, max_tokens=max_output_tokens, temperature=temperature)
+			partial_summaries.append(summary)
+
+		# Combine partial summaries
 		combined = "\n\n".join(partial_summaries)
-		return _invoke_with_backoff(
-			chain, combined, retries=retries, initial_backoff=initial_backoff
-		)
+		print(f"[INFO] Creating final summary from {len(chunks)} chunks...")
+		final_prompt = _build_prompt(combined)
+		return backend.generate(final_prompt, max_tokens=max_output_tokens, temperature=temperature)
 	else:
-		return _invoke_with_backoff(
-			chain, text, retries=retries, initial_backoff=initial_backoff
-		)
+		# Single chunk
+		prompt = _build_prompt(text)
+		return backend.generate(prompt, max_tokens=max_output_tokens, temperature=temperature)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-	parser = argparse.ArgumentParser(description="Summarize a long text using Gemini.")
+	parser = argparse.ArgumentParser(description="Summarize a long text using LLM backend.")
 	parser.add_argument(
 		"--input",
 		type=str,
@@ -149,10 +112,17 @@ def main(argv: Optional[List[str]] = None) -> int:
 		help="Path to write the summary (default: outputs/summary.txt)",
 	)
 	parser.add_argument(
+		"--backend",
+		type=str,
+		default="ollama",
+		choices=["ollama", "gemini"],
+		help="LLM backend to use (default: ollama)",
+	)
+	parser.add_argument(
 		"--model",
 		type=str,
-		default="gemini-2.0-flash-lite",
-		help="Gemini model name (default: gemini-2.0-flash-lite)",
+		default=None,
+		help="Model name (default: backend-specific defaults)",
 	)
 	parser.add_argument(
 		"--chunk-chars",
@@ -167,16 +137,10 @@ def main(argv: Optional[List[str]] = None) -> int:
 		help="Max output tokens per call (default: 384)",
 	)
 	parser.add_argument(
-		"--retries",
-		type=int,
-		default=6,
-		help="Number of retries on 429 (default: 6)",
-	)
-	parser.add_argument(
-		"--initial-backoff",
+		"--temperature",
 		type=float,
-		default=2.0,
-		help="Initial backoff seconds for 429 (default: 2.0)",
+		default=0.2,
+		help="Generation temperature (default: 0.2)",
 	)
 
 	args = parser.parse_args(argv)
@@ -189,11 +153,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 		text = _read_text(input_path)
 		summary = summarize_text(
 			text,
+			backend_type=args.backend,
 			model=args.model,
 			per_chunk_chars=args.chunk_chars,
 			max_output_tokens=args.max_output_tokens,
-			retries=args.retries,
-			initial_backoff=args.initial_backoff,
+			temperature=args.temperature,
 		)
 		output_path.write_text(summary, encoding="utf-8")
 		print(summary)

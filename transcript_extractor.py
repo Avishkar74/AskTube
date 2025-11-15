@@ -8,7 +8,12 @@ from youtube_transcript_api import YouTubeTranscriptApi
 import re
 import json
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional
+try:
+    from pytube import YouTube
+    PYTUBE_AVAILABLE = True
+except ImportError:
+    PYTUBE_AVAILABLE = False
 
 
 def extract_video_id(url: str) -> str:
@@ -26,6 +31,34 @@ def extract_video_id(url: str) -> str:
     raise ValueError(f"Could not extract video ID from: {url}")
 
 
+def get_video_title(video_url: str) -> Optional[str]:
+    """Extract video title from YouTube URL.
+
+    Args:
+        video_url: YouTube video URL or video ID
+
+    Returns:
+        Video title if successful, None if pytube not available or extraction fails
+    """
+    if not PYTUBE_AVAILABLE:
+        print("[INFO] pytube not installed. Install with: pip install pytube")
+        return None
+
+    try:
+        # Ensure we have a full URL
+        video_id = extract_video_id(video_url)
+        full_url = f"https://youtube.com/watch?v={video_id}"
+
+        yt = YouTube(full_url)
+        title = yt.title
+        print(f"[VIDEO] Title: {title}")
+        return title
+
+    except Exception as e:
+        print(f"[WARNING] Could not extract video title: {e}")
+        return None
+
+
 def get_transcript(video_url: str, language: str = 'en') -> List[Dict]:
     """Fetch transcript for a YouTube video.
     
@@ -37,43 +70,43 @@ def get_transcript(video_url: str, language: str = 'en') -> List[Dict]:
         List of transcript segments with 'text', 'start', 'duration'
     """
     video_id = extract_video_id(video_url)
-    print(f"📹 Video ID: {video_id}")
-    print(f"🔍 Fetching transcript...")
-    
+    print(f"[VIDEO] Video ID: {video_id}")
+    print(f"[INFO] Fetching transcript...")
+
     try:
         # Use the .fetch() method and convert to list
         api = YouTubeTranscriptApi()
         fetched = api.fetch(video_id, languages=[language])
-        
+
         # Convert FetchedTranscript to list of plain dicts
-        transcript = [{'text': item.text, 'start': item.start, 'duration': item.duration} 
+        transcript = [{'text': item.text, 'start': item.start, 'duration': item.duration}
                       for item in fetched]
-        
-        print(f"✓ Found transcript ({len(transcript)} segments)")
+
+        print(f"[OK] Found transcript ({len(transcript)} segments)")
         return transcript
-        
+
     except Exception as e:
-        print(f"⚠️  Error: {e}")
-        
+        print(f"[WARNING] Error: {e}")
+
         # List available transcripts using .list() method
         try:
             api = YouTubeTranscriptApi()
             transcript_list = api.list(video_id)
-            print("\n📋 Available transcripts:")
+            print("\n[INFO] Available transcripts:")
             for t in transcript_list:
-                print(f"   • {t}")
-            
+                print(f"   - {t}")
+
             # Try to fetch first available
-            print("\n🔄 Attempting to fetch first available transcript...")
+            print("\n[INFO] Attempting to fetch first available transcript...")
             fetched = api.fetch(video_id)
-            transcript = [{'text': item.text, 'start': item.start, 'duration': item.duration} 
+            transcript = [{'text': item.text, 'start': item.start, 'duration': item.duration}
                           for item in fetched]
-            
-            print(f"✓ Got transcript ({len(transcript)} segments)")
+
+            print(f"[OK] Got transcript ({len(transcript)} segments)")
             return transcript
-            
+
         except Exception as list_error:
-            print(f"✗ Could not list transcripts: {list_error}")
+            print(f"[ERROR] Could not list transcripts: {list_error}")
             raise
 
 
@@ -100,11 +133,11 @@ def save_transcript(transcript: List[Dict], video_id: str, output_dir: str = "ou
             timestamp = f"[{entry['start']:.2f}s]"
             f.write(f"{timestamp} {entry['text']}\n")
     
-    print(f"\n💾 Saved to:")
-    print(f"   • {json_file.name} - {len(transcript)} segments")
-    print(f"   • {txt_file.name} - {len(full_text):,} characters")
-    print(f"   • {timestamped_file.name} - with timestamps")
-    print(f"\n📂 Output directory: {output_path.absolute()}")
+    print(f"\n[SAVED] Files created:")
+    print(f"   - {json_file.name} - {len(transcript)} segments")
+    print(f"   - {txt_file.name} - {len(full_text):,} characters")
+    print(f"   - {timestamped_file.name} - with timestamps")
+    print(f"\n[OUTPUT] Directory: {output_path.absolute()}")
 
 
 def main():
@@ -127,15 +160,15 @@ def main():
         
         # Print sample
         print("\n" + "=" * 60)
-        print("📄 Sample (first 3 segments):")
+        print("[SAMPLE] First 3 segments:")
         print("=" * 60)
         for entry in transcript[:3]:
             print(f"[{entry['start']:>7.2f}s] {entry['text']}")
-        
-        print("\n✅ Success!")
-        
+
+        print("\n[OK] Success!")
+
     except Exception as e:
-        print(f"\n❌ Failed: {e}")
+        print(f"\n[ERROR] Failed: {e}")
         return 1
     
     return 0

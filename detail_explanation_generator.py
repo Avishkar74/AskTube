@@ -12,10 +12,7 @@ from typing import Optional, List, Dict, Any
 # Suppress FutureWarning from transformers/torch
 warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
 
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import PromptTemplate
-from langchain_core.output_parsers import StrOutputParser
+from llm_backend import get_backend, auto_select_backend
 
 
 SCHEMA_FIELDS = [
@@ -29,21 +26,6 @@ SCHEMA_FIELDS = [
 ]
 
 
-def _get_api_key() -> str:
-    load_dotenv()
-    api_key = (
-        os.getenv("GOOGLE_API_KEY")
-        or os.getenv("google_api_key")
-        or os.getenv("GEMINI_API_KEY")
-        or os.getenv("gemini_api_key")
-    )
-    if api_key and " " in api_key:
-        api_key = api_key.split()[0]
-    if not api_key:
-        raise RuntimeError(
-            "Missing GOOGLE_API_KEY (also checked GEMINI_API_KEY) in environment/.env."
-        )
-    return api_key
 
 
 def _read_text(path: Path) -> str:
@@ -67,15 +49,9 @@ def _chunk_text(text: str, max_chars: int) -> List[str]:
     return [c for c in chunks if c]
 
 
-def _build_chain(model: str, api_key: str, max_output_tokens: int = 1024, temperature: float = 0.2):
-    llm = ChatGoogleGenerativeAI(
-        model=model,
-        google_api_key=api_key,
-        max_output_tokens=max_output_tokens,
-        temperature=temperature,
-    )
-    template = """
-SYSTEM ROLE:
+def _build_prompt(content: str) -> str:
+    """Build detailed notes generation prompt."""
+    return f"""SYSTEM ROLE:
 You are an expert educator and master note-maker. Convert the transcript into structured, clear, exam-ready notes.
 
 CRITICAL: You MUST return ONLY valid, properly formatted JSON. No markdown, no code fences, no extra text.
@@ -122,25 +98,9 @@ TRANSCRIPT:
 {content}
 ---
 
-Remember: Output ONLY the JSON object. Start with {{ and end with }}. No other text.
-"""
-    prompt = PromptTemplate.from_template(template)
-    return prompt | llm | StrOutputParser()
+Remember: Output ONLY the JSON object. Start with {{ and end with }}. No other text."""
 
 
-def _invoke_with_backoff(chain, content: str, retries: int = 6, initial_backoff: float = 2.0) -> str:
-    for attempt in range(retries):
-        try:
-            return chain.invoke({"content": content, "schema_fields": ", ".join(SCHEMA_FIELDS)})
-        except Exception as e:
-            msg = str(e)
-            if "429" in msg or "Resource exhausted" in msg:
-                sleep_s = initial_backoff * (2 ** attempt) + random.uniform(0, 0.4)
-                print(f"Rate limited (429). Retrying in {sleep_s:.1f}s... [{attempt+1}/{retries}]")
-                time.sleep(sleep_s)
-                continue
-            raise
-    raise RuntimeError("Exceeded retry attempts from rate limiting (429)")
 
 
 def _extract_json(raw: str) -> Dict[str, Any]:
@@ -262,37 +222,56 @@ def _extract_fields_with_regex(text: str) -> Optional[Dict[str, str]]:
 
 def generate_notes(
     text: str,
-    model: str = "gemini-2.0-flash-lite",
+    backend_type: str = "ollama",
+    model: Optional[str] = None,
     per_chunk_chars: int = 8000,
     max_output_tokens: int = 1024,
-    retries: int = 6,
-    initial_backoff: float = 2.0,
+    temperature: float = 0.2,
 ) -> Dict[str, str]:
-    api_key = _get_api_key()
-    chain = _build_chain(model, api_key, max_output_tokens=max_output_tokens)
+    """Generate detailed study notes using specified backend.
+
+    Args:
+        text: Text to convert into notes
+        backend_type: "ollama" or "gemini"
+        model: Model name (optional, uses backend defaults)
+        per_chunk_chars: Max characters per chunk (0 disables chunking)
+        max_output_tokens: Max tokens in response
+        temperature: Generation temperature
+
+    Returns:
+        Dictionary with note fields
+    """
+    backend = get_backend(backend_type, model)
 
     if per_chunk_chars and len(text) > per_chunk_chars:
         chunks = _chunk_text(text, per_chunk_chars)
         partial = []
         for idx, c in enumerate(chunks, 1):
-            print(f"Processing chunk {idx}/{len(chunks)} (chars={len(c)})")
-            partial.append(_invoke_with_backoff(chain, c, retries=retries, initial_backoff=initial_backoff))
+            print(f"[INFO] Processing chunk {idx}/{len(chunks)} (chars={len(c)})")
+            prompt = _build_prompt(c)
+            raw_response = backend.generate(prompt, max_tokens=max_output_tokens, temperature=temperature)
+            partial.append(raw_response)
+
         combined_prompt_text = "\n\n".join(partial)
-        raw = _invoke_with_backoff(chain, combined_prompt_text, retries=retries, initial_backoff=initial_backoff)
+        print(f"[INFO] Creating final notes from {len(chunks)} chunks...")
+        final_prompt = _build_prompt(combined_prompt_text)
+        raw = backend.generate(final_prompt, max_tokens=max_output_tokens, temperature=temperature)
     else:
-        raw = _invoke_with_backoff(chain, text, retries=retries, initial_backoff=initial_backoff)
+        prompt = _build_prompt(text)
+        raw = backend.generate(prompt, max_tokens=max_output_tokens, temperature=temperature)
 
     try:
         return _extract_json(raw)
     except ValueError as first_err:
-        print("Initial JSON parse failed. Retrying with compact reinforcement prompt...")
+        print("[WARNING] Initial JSON parse failed. Retrying with compact reinforcement prompt...")
         reinforcement = (
             "Return ONLY raw JSON object with keys: "
             + ", ".join(SCHEMA_FIELDS)
             + ". No code fences, no markdown, no commentary."
         )
         combined = reinforcement + "\n\n" + raw[:12000]
-        raw2 = _invoke_with_backoff(chain, combined, retries=retries, initial_backoff=initial_backoff)
+        final_prompt = _build_prompt(combined)
+        raw2 = backend.generate(final_prompt, max_tokens=max_output_tokens, temperature=temperature)
         try:
             return _extract_json(raw2)
         except ValueError:
@@ -304,11 +283,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--input", type=str, default="input.txt", help="Path to transcript text file")
     parser.add_argument("--output-json", type=str, default="outputs/notes.json", help="Path to write JSON notes")
     parser.add_argument("--output-md", type=str, default="outputs/notes.md", help="Path to write Markdown rendering")
-    parser.add_argument("--model", type=str, default="gemini-2.0-flash-lite", help="Gemini model name")
+    parser.add_argument(
+        "--backend",
+        type=str,
+        default="ollama",
+        choices=["ollama", "gemini"],
+        help="LLM backend to use (default: ollama)",
+    )
+    parser.add_argument("--model", type=str, default=None, help="Model name (default: backend-specific defaults)")
     parser.add_argument("--chunk-chars", type=int, default=8000, help="Max characters per chunk (0 disables)")
     parser.add_argument("--max-output-tokens", type=int, default=1024, help="Max output tokens per call")
-    parser.add_argument("--retries", type=int, default=6, help="Retries on 429 errors")
-    parser.add_argument("--initial-backoff", type=float, default=2.0, help="Initial backoff seconds for rate limit")
+    parser.add_argument("--temperature", type=float, default=0.2, help="Generation temperature (default: 0.2)")
 
     args = parser.parse_args(argv)
 
@@ -322,11 +307,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         text = _read_text(input_path)
         notes = generate_notes(
             text,
+            backend_type=args.backend,
             model=args.model,
             per_chunk_chars=args.chunk_chars,
             max_output_tokens=args.max_output_tokens,
-            retries=args.retries,
-            initial_backoff=args.initial_backoff,
+            temperature=args.temperature,
         )
         json_path.write_text(json.dumps(notes, ensure_ascii=False, indent=2), encoding="utf-8")
 

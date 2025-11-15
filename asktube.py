@@ -16,7 +16,7 @@ from typing import Optional, Dict, Any
 import re
 
 # Import our modules
-from transcript_extractor import get_transcript, save_transcript, extract_video_id
+from transcript_extractor import get_transcript, save_transcript, extract_video_id, get_video_title
 from summary_generator import summarize_text
 from detail_explanation_generator import generate_notes
 from mindmap_generator import generate_mindmap
@@ -63,19 +63,23 @@ class AskTube:
     def process_url(
         self,
         youtube_url: str,
-        model: str = "gemini-2.0-flash-lite",
+        backend_type: str = "ollama",
+        model: Optional[str] = None,
         skip_summary: bool = False,
         skip_notes: bool = False,
         skip_mindmap: bool = False,
+        generate_pdf: bool = False,
     ) -> Dict[str, Any]:
         """Process a YouTube URL through the full pipeline.
 
         Args:
             youtube_url: YouTube video URL
-            model: Gemini model to use
+            backend_type: LLM backend to use ("ollama" or "gemini")
+            model: Model name (optional, uses backend defaults)
             skip_summary: Skip summary generation
             skip_notes: Skip detailed notes generation
             skip_mindmap: Skip mind map generation
+            generate_pdf: Generate PDF combining all outputs
 
         Returns:
             Dictionary with paths to all generated files
@@ -91,7 +95,12 @@ class AskTube:
 
         print(f"Video ID: {video_id}")
 
-        results = {"video_id": video_id, "url": youtube_url}
+        # Extract video title
+        video_title = get_video_title(youtube_url)
+        if not video_title:
+            video_title = f"Video {video_id}"  # Fallback to generic title
+
+        results = {"video_id": video_id, "url": youtube_url, "title": video_title}
 
         # Step 1: Extract transcript
         print(f"\n[1/4] Extracting transcript...")
@@ -128,7 +137,7 @@ class AskTube:
         # Step 2: Generate summary
         if not skip_summary:
             print(f"\n[2/4] Generating summary...")
-            summary_cache_key = f"summary_{video_id}_{model}"
+            summary_cache_key = f"summary_{video_id}_{backend_type}_{model or 'default'}"
             cached_summary = self._get_cached(summary_cache_key, "outputs")
 
             if cached_summary:
@@ -136,7 +145,7 @@ class AskTube:
                 summary = cached_summary
             else:
                 summary = summarize_text(
-                    transcript_text, model=model, per_chunk_chars=8000
+                    transcript_text, backend_type=backend_type, model=model, per_chunk_chars=8000
                 )
                 self._set_cached(summary_cache_key, summary, "outputs")
                 print(f"[OK]Summary generated")
@@ -150,7 +159,7 @@ class AskTube:
         # Step 3: Generate detailed notes
         if not skip_notes:
             print(f"\n[3/4] Generating detailed notes...")
-            notes_cache_key = f"notes_{video_id}_{model}"
+            notes_cache_key = f"notes_{video_id}_{backend_type}_{model or 'default'}"
             cached_notes = self._get_cached(notes_cache_key, "outputs")
 
             if cached_notes:
@@ -158,7 +167,7 @@ class AskTube:
                 notes = cached_notes
             else:
                 notes = generate_notes(
-                    transcript_text, model=model, per_chunk_chars=8000
+                    transcript_text, backend_type=backend_type, model=model, per_chunk_chars=8000
                 )
                 self._set_cached(notes_cache_key, notes, "outputs")
                 print(f"[OK]Notes generated")
@@ -188,7 +197,7 @@ class AskTube:
         # Step 4: Generate mind map
         if not skip_mindmap:
             print(f"\n[4/4] Generating mind map...")
-            mindmap_cache_key = f"mindmap_{video_id}_{model}"
+            mindmap_cache_key = f"mindmap_{video_id}_{backend_type}_{model or 'default'}"
             cached_mindmap = self._get_cached(mindmap_cache_key, "outputs")
 
             if cached_mindmap:
@@ -196,7 +205,7 @@ class AskTube:
                 mindmap = cached_mindmap
             else:
                 mindmap = generate_mindmap(
-                    transcript_text, model=model, per_chunk_chars=8000
+                    transcript_text, backend_type=backend_type, model=model, per_chunk_chars=8000
                 )
                 self._set_cached(mindmap_cache_key, mindmap, "outputs")
                 print(f"[OK]Mind map generated")
@@ -207,26 +216,53 @@ class AskTube:
         else:
             print(f"\n[4/4] Skipping mind map...")
 
+        # Step 5: Generate PDF if requested
+        if generate_pdf:
+            if not skip_summary and not skip_notes:
+                print(f"\n[5/5] Generating enhanced PDF/HTML...")
+                pdf_exporter = PDFExporter(output_dir=str(self.output_dir / "pdfs"))
+
+                # Collect data for PDF
+                mindmap_text = mindmap if not skip_mindmap else ""
+
+                pdf_path = pdf_exporter.export_to_pdf(
+                    video_id=video_id,
+                    video_url=youtube_url,
+                    video_title=video_title,
+                    summary=summary,
+                    notes=notes,
+                    mindmap=mindmap_text,
+                    transcript=transcript_text
+                )
+                results["pdf"] = str(pdf_path)
+                print(f"[OK]Enhanced PDF/HTML generated")
+            else:
+                print("\n[!] PDF generation requires summary and notes (--skip-summary and --skip-notes cannot be used with --generate-pdf)")
+
         return results
 
     def process_transcript_file(
         self,
         transcript_path: str,
         output_prefix: str = "custom",
-        model: str = "gemini-2.0-flash-lite",
+        backend_type: str = "ollama",
+        model: Optional[str] = None,
         skip_summary: bool = False,
         skip_notes: bool = False,
         skip_mindmap: bool = False,
+        generate_pdf: bool = False,
     ) -> Dict[str, Any]:
         """Process a transcript file through the pipeline (skip extraction).
 
         Args:
             transcript_path: Path to transcript text file
             output_prefix: Prefix for output files
-            model: Gemini model to use
+            backend_type: LLM backend to use ("ollama" or "gemini")
+            model: Model name (optional, uses backend defaults)
             skip_summary: Skip summary generation
             skip_notes: Skip detailed notes generation
             skip_mindmap: Skip mind map generation
+            generate_pdf: Generate PDF combining all outputs
 
         Returns:
             Dictionary with paths to all generated files
@@ -243,7 +279,7 @@ class AskTube:
         # Generate summary
         if not skip_summary:
             print(f"\n[1/3] Generating summary...")
-            summary = summarize_text(transcript_text, model=model, per_chunk_chars=8000)
+            summary = summarize_text(transcript_text, backend_type=backend_type, model=model, per_chunk_chars=8000)
             summary_path = self.output_dir / f"{output_prefix}_summary.txt"
             summary_path.write_text(summary, encoding="utf-8")
             results["summary"] = str(summary_path)
@@ -254,7 +290,7 @@ class AskTube:
         # Generate detailed notes
         if not skip_notes:
             print(f"\n[2/3] Generating detailed notes...")
-            notes = generate_notes(transcript_text, model=model, per_chunk_chars=8000)
+            notes = generate_notes(transcript_text, backend_type=backend_type, model=model, per_chunk_chars=8000)
 
             notes_json_path = self.output_dir / f"{output_prefix}_notes.json"
             notes_md_path = self.output_dir / f"{output_prefix}_notes.md"
@@ -281,13 +317,36 @@ class AskTube:
         # Generate mind map
         if not skip_mindmap:
             print(f"\n[3/3] Generating mind map...")
-            mindmap = generate_mindmap(transcript_text, model=model, per_chunk_chars=8000)
+            mindmap = generate_mindmap(transcript_text, backend_type=backend_type, model=model, per_chunk_chars=8000)
             mindmap_path = self.output_dir / f"{output_prefix}_mindmap.mmd"
             mindmap_path.write_text(mindmap, encoding="utf-8")
             results["mindmap"] = str(mindmap_path)
             print(f"[OK]Mind map generated")
         else:
             print(f"\n[3/3] Skipping mind map...")
+
+        # Step 4: Generate PDF if requested
+        if generate_pdf:
+            if not skip_summary and not skip_notes:
+                print(f"\n[4/4] Generating enhanced PDF/HTML...")
+                pdf_exporter = PDFExporter(output_dir=str(self.output_dir / "pdfs"))
+
+                # Collect data for PDF
+                mindmap_text = mindmap if not skip_mindmap else ""
+
+                pdf_path = pdf_exporter.export_to_pdf(
+                    video_id=output_prefix,
+                    video_url="",
+                    video_title=f"Study Materials: {output_prefix}",
+                    summary=summary,
+                    notes=notes,
+                    mindmap=mindmap_text,
+                    transcript=transcript_text
+                )
+                results["pdf"] = str(pdf_path)
+                print(f"[OK]Enhanced PDF/HTML generated")
+            else:
+                print("\n[!] PDF generation requires summary and notes (--skip-summary and --skip-notes cannot be used with --generate-pdf)")
 
         return results
 
@@ -325,10 +384,17 @@ Examples:
         help="Output directory (default: outputs)",
     )
     parser.add_argument(
+        "--backend",
+        "-b",
+        default="ollama",
+        choices=["ollama", "gemini"],
+        help="LLM backend to use (default: ollama)",
+    )
+    parser.add_argument(
         "--model",
         "-m",
-        default="gemini-2.0-flash-lite",
-        help="Gemini model (default: gemini-2.0-flash-lite)",
+        default=None,
+        help="Model name (optional, uses backend-specific defaults: qwen2.5:7b for ollama, gemini-2.0-flash-lite for gemini)",
     )
     parser.add_argument(
         "--no-cache", action="store_true", help="Disable caching"
@@ -379,18 +445,22 @@ Examples:
             results = asktube.process_transcript_file(
                 transcript_path=args.transcript,
                 output_prefix=args.output_prefix,
+                backend_type=args.backend,
                 model=args.model,
                 skip_summary=args.skip_summary,
                 skip_notes=args.skip_notes,
                 skip_mindmap=args.skip_mindmap,
+                generate_pdf=args.generate_pdf,
             )
         else:
             results = asktube.process_url(
                 youtube_url=args.url,
+                backend_type=args.backend,
                 model=args.model,
                 skip_summary=args.skip_summary,
                 skip_notes=args.skip_notes,
                 skip_mindmap=args.skip_mindmap,
+                generate_pdf=args.generate_pdf,
             )
 
         # Print results

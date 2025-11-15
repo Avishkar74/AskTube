@@ -1,0 +1,229 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Study Materials - test_video</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            page-break-before: always;
+        }
+
+        h1:first-of-type {
+            page-break-before: auto;
+        }
+
+        h2 {
+            color: #34495e;
+            margin-top: 30px;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+        }
+
+        h3 {
+            color: #7f8c8d;
+            margin-top: 20px;
+        }
+
+        .header {
+            text-align: center;
+            padding: 20px 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin: -20px -20px 30px -20px;
+            padding: 40px 20px;
+        }
+
+        .header h1 {
+            color: white;
+            border: none;
+            margin: 0;
+            page-break-before: auto;
+        }
+
+        .metadata {
+            color: rgba(255,255,255,0.9);
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        .section {
+            margin: 30px 0;
+            page-break-inside: avoid;
+        }
+
+        .summary-box {
+            background: #f8f9fa;
+            border-left: 5px solid #3498db;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        .note-item {
+            margin: 15px 0;
+            padding: 15px;
+            background: #fff;
+            border: 1px solid #e1e8ed;
+            border-radius: 5px;
+        }
+
+        .sticky-note {
+            display: inline-block;
+            background: #fff9c4;
+            padding: 10px 15px;
+            margin: 5px;
+            border-radius: 3px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            font-size: 14px;
+        }
+
+        .mindmap-box {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+
+        .transcript-box {
+            background: #fafafa;
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 13px;
+            line-height: 1.8;
+            max-height: 400px;
+            overflow: hidden;
+        }
+
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 2px solid #ecf0f1;
+            text-align: center;
+            color: #95a5a6;
+            font-size: 12px;
+        }
+
+        ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+
+        li:before {
+            content: "→ ";
+            color: #3498db;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .page-break {
+            page-break-after: always;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Study Materials</h1>
+        <div class="metadata">
+            Video ID: test_video<br>
+            URL: https://youtube.com/watch?v=test<br>
+            Generated: 2025-11-14 21:08
+        </div>
+    </div>
+
+    <div class="section">
+        <h1>Summary</h1>
+        <div class="summary-box">
+            <p>This video covers Python programming basics.</p><p>Key points:<br>- Variables and data types<br>- Control flow<br>- Functions</p>
+        </div>
+    </div>
+
+    <div class="page-break"></div>
+    <div class="section">
+        <h1>Detailed Study Notes</h1>
+
+        <div class="note-item">
+            <h2>Overview</h2>
+            <p>A comprehensive introduction to Python programming.</p>
+        </div>
+
+        <div class="note-item">
+            <h2>Detailed Notes</h2>
+            <p>Variables store data<br>Functions encapsulate logic<br>Control flow directs execution</p>
+        </div>
+
+        <div class="note-item">
+            <h2>Key Concepts</h2>
+            <p>Variable: Named storage location<br>Function: Reusable code block</p>
+        </div>
+
+        <div class="note-item">
+            <h2>Examples</h2>
+            <p>Example 1: x = 5<br>Example 2: def greet(): print('Hello')</p>
+        </div>
+
+        <div class="note-item">
+            <h2>Memory Tricks & Mnemonics</h2>
+            <p>Remember: Variables Vary, Functions Function</p>
+        </div>
+
+        <div class="note-item">
+            <h2>Common Mistakes</h2>
+            <p>Forgetting colons after function definitions</p>
+        </div>
+
+        <h2>Quick Revision - Sticky Notes</h2>
+        <div style="margin: 20px 0;">
+            <span class="sticky-note">Variables store data</span>
+            <span class="sticky-note">Functions are reusable</span>
+            <span class="sticky-note">Indentation matters</span>
+        </div>
+    </div>
+
+    <div class="page-break"></div>
+    <div class="section">
+        <h1>Mind Map</h1>
+        <p>Mermaid diagram code (paste into <a href="https://mermaid.live">mermaid.live</a> to visualize):</p>
+        <div class="mindmap-box">mindmap
+  root((Python Basics))
+    Variables
+      Types
+      Assignment
+    Functions
+      Definition
+      Calling</div>
+    </div>
+
+    <div class="footer">
+        Generated by AskTube - YouTube Learning Assistant<br>
+        Powered by Google Gemini AI
+    </div>
+</body>
+</html>
