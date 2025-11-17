@@ -28,3 +28,6 @@ colorama>=0.4.6
 sentence-transformers>=2.2.2
 faiss-cpu>=1.8.0.post1
 huggingface_hub<1.0
+
+# Ollama Python client for local LLM backend
+ollama>=0.1.8

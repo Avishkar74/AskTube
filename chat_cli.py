@@ -12,6 +12,7 @@ from pathlib import Path
 
 from conversation_manager import ConversationManager
 from config import settings
+from rag_indexer import index_transcript
 from transcript_extractor import extract_video_id, get_transcript
 
 
@@ -123,6 +124,9 @@ Examples:
     rag_group.add_argument(
         "--no-rag", action="store_true", help="Disable retrieval-augmented generation for chat"
     )
+    parser.add_argument(
+        "--force-reindex", action="store_true", help="Force re-indexing of transcript before chat when RAG is enabled"
+    )
 
     args = parser.parse_args()
 
@@ -159,6 +163,18 @@ Examples:
             transcript_items = get_transcript(f"https://youtube.com/watch?v={video_id}")
             transcript_text = " ".join([item["text"] for item in transcript_items])
             print(f"Transcript loaded: {len(transcript_text)} characters\n")
+
+        # Auto-index for RAG (so chat works immediately with retrieval)
+        if use_rag:
+            try:
+                print("Indexing transcript for retrieval (RAG)...")
+                idx_res = index_transcript(video_id, transcript_text, force_reindex=args.force_reindex)
+                if idx_res.get("indexed"):
+                    print(f"[OK] Indexed {idx_res['chunks']} chunks (hash {idx_res['hash'][:8]}...)\n")
+                else:
+                    print(f"[OK] Index step: {idx_res.get('reason', 'skipped')}\n")
+            except Exception as e:
+                print(f"[WARN] RAG indexing failed: {e}. Proceeding without RAG.")
 
         # Start chat session
         chat_session(manager, args.user_id, video_id, transcript_text)
