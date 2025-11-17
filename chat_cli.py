@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from conversation_manager import ConversationManager
+from config import settings
 from transcript_extractor import extract_video_id, get_transcript
 
 
@@ -110,7 +111,17 @@ Examples:
         "--user-id", "-u", default="default_user", help="User ID (default: default_user)"
     )
     parser.add_argument(
-        "--model", "-m", default="gemini-2.0-flash-lite", help="Gemini model to use"
+        "--backend", "-b", default="ollama", choices=["ollama", "gemini"], help="Chat LLM backend (default: ollama)"
+    )
+    parser.add_argument(
+        "--model", "-m", default=None, help="Model name (optional, uses backend defaults)"
+    )
+    rag_group = parser.add_mutually_exclusive_group()
+    rag_group.add_argument(
+        "--use-rag", action="store_true", help="Enable retrieval-augmented generation for chat"
+    )
+    rag_group.add_argument(
+        "--no-rag", action="store_true", help="Disable retrieval-augmented generation for chat"
     )
 
     args = parser.parse_args()
@@ -123,8 +134,15 @@ Examples:
         parser.error("--video-id required when using --transcript")
 
     try:
-        # Initialize manager
-        manager = ConversationManager(model=args.model)
+        # Initialize manager with selected backend
+        # Determine RAG usage
+        use_rag = settings.USE_RAG
+        if args.use_rag:
+            use_rag = True
+        if args.no_rag:
+            use_rag = False
+
+        manager = ConversationManager(backend_type=args.backend, model=args.model, use_rag=use_rag)
 
         # Get transcript and video ID
         if args.transcript:

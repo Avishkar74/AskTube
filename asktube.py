@@ -22,6 +22,8 @@ from detail_explanation_generator import generate_notes
 from mindmap_generator import generate_mindmap
 from cache_manager import CacheManager
 from pdf_exporter import PDFExporter
+from config import settings
+from rag_indexer import index_transcript
 
 
 class AskTube:
@@ -133,6 +135,15 @@ class AskTube:
             "txt": str(self.output_dir / f"{video_id}.txt"),
             "timestamped": str(self.output_dir / f"{video_id}_timestamped.txt"),
         }
+
+        # Optional: Index transcript for RAG
+        if settings.USE_RAG:
+            print(f"\n[1b] Indexing transcript for retrieval...")
+            idx_result = index_transcript(video_id, transcript_text, force_reindex=getattr(self, "force_reindex", False))
+            if idx_result.get("indexed"):
+                print(f"[OK]Indexed {idx_result['chunks']} chunks (hash {idx_result['hash'][:8]}...)")
+            else:
+                print(f"[OK]Index step: {idx_result.get('reason', 'skipped')}")
 
         # Step 2: Generate summary
         if not skip_summary:
@@ -418,6 +429,9 @@ Examples:
         "--generate-pdf", action="store_true", help="Generate PDF combining all outputs"
     )
     parser.add_argument(
+        "--force-reindex", action="store_true", help="Force re-indexing of transcript into FAISS"
+    )
+    parser.add_argument(
         "--output-prefix",
         default="custom",
         help="Output filename prefix for transcript files (default: custom)",
@@ -439,6 +453,8 @@ Examples:
             use_cache=not args.no_cache,
             cache_ttl=args.cache_ttl,
         )
+        # propagate force reindex flag
+        setattr(asktube, "force_reindex", bool(args.force_reindex))
 
         # Process input
         if args.transcript:

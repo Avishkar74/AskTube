@@ -1,61 +1,62 @@
 """
 Conversation memory manager for chat functionality.
 
-Manages conversation history with file-based persistence.
-Supports context-aware Q&A about video transcripts.
+Refactored to use generic LLM backend abstraction (`llm_backend.get_backend`) so
+both local Ollama models and cloud Gemini can be used uniformly.
+
+Features:
+ - Persistent JSON file conversation history
+ - Transcript association per (user, video)
+ - Backend-agnostic prompt construction (single string prompt)
+ - Optional conversation summarization hook (future extension)
 """
 import json
-import time
 from pathlib import Path
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-from langchain_core.output_parsers import StrOutputParser
+from llm_backend import get_backend, LLMBackend
+from config import settings
+from rag_embeddings import embed_query, get_embedding_model
+from rag_faiss_store import FaissVectorStore
 
 
 class ConversationManager:
-    """Manages conversations with persistent history."""
+    """Manages conversations with persistent history using a chosen LLM backend."""
 
     def __init__(
         self,
         storage_dir: str = "conversations",
         max_history: int = 10,
-        model: str = "gemini-2.0-flash-lite",
-        api_key: Optional[str] = None,
+        backend_type: str = "ollama",
+        model: Optional[str] = None,
+        backend: Optional[LLMBackend] = None,
+        temperature: float = 0.3,
+        max_output_tokens: int = 512,
+        use_rag: Optional[bool] = None,
     ):
         """Initialize conversation manager.
 
         Args:
             storage_dir: Directory to store conversation files
-            max_history: Maximum number of messages to keep in context
-            model: Gemini model to use
-            api_key: Google API key (if None, will try to load from env)
+            max_history: Max messages (user+assistant pairs * 2) retained strictly
+            backend_type: 'ollama' or 'gemini'
+            model: Optional model name (uses backend defaults if None)
+            backend: Optional pre-instantiated backend (primarily for testing)
+            temperature: Generation temperature for responses
+            max_output_tokens: Max tokens for assistant response
         """
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.max_history = max_history
+        self.backend_type = backend_type.lower()
         self.model = model
+        self.temperature = temperature
+        self.max_output_tokens = max_output_tokens
+        self.use_rag = settings.USE_RAG if use_rag is None else use_rag
 
-        # Get API key
-        if api_key is None:
-            import os
-            from dotenv import load_dotenv
-
-            load_dotenv()
-            api_key = (
-                os.getenv("GOOGLE_API_KEY")
-                or os.getenv("google_api_key")
-                or os.getenv("GEMINI_API_KEY")
-                or os.getenv("gemini_api_key")
-            )
-
-        if not api_key:
-            raise ValueError("API key required")
-
-        self.api_key = api_key
+        # Allow injection for tests; otherwise construct backend
+        self.backend = backend if backend is not None else get_backend(self.backend_type, self.model)
 
     def _get_conversation_path(self, user_id: str, video_id: str) -> Path:
         """Get path to conversation file."""
@@ -171,28 +172,91 @@ class ConversationManager:
         conversation["transcript"] = transcript
         self.save_conversation(conversation)
 
-    def get_messages_as_langchain(
-        self, user_id: str, video_id: str
-    ) -> List[Any]:
-        """Get messages formatted for LangChain.
+    def _build_prompt(self, transcript: str, history: List[Dict[str, Any]], user_message: str) -> str:
+        """Construct a single prompt string including system instructions, limited history, and new user input."""
+        system_prompt = (
+            "You are a helpful AI assistant helping users learn from YouTube videos.\n\n"
+            "You have access to the video's transcript and can answer questions about: \n"
+            "- The content and main topics covered\n"
+            "- Specific details or explanations\n"
+            "- Clarifications on concepts\n"
+            "- Connections between ideas\n"
+            "- Practical applications\n\n"
+            "Provide clear, accurate, and helpful responses based strictly on the transcript content.\n"
+            "If unsure or content is not present, say you don't find it in the transcript.\n"
+        )
 
-        Args:
-            user_id: User identifier
-            video_id: Video identifier
+        # Format limited history
+        formatted_history = []
+        for msg in history[-self.max_history:]:
+            role = "User" if msg["role"] == "user" else "Assistant"
+            formatted_history.append(f"{role}: {msg['content']}")
+        history_block = "\n".join(formatted_history)
 
-        Returns:
-            List of LangChain message objects
+        prompt = (
+            f"{system_prompt}\nVIDEO TRANSCRIPT (truncated):\n---\n{transcript[:15000]}\n---\n\n"
+            f"Conversation History:\n{history_block}\n\nUser: {user_message}\nAssistant:"  # trailing Assistant: encourages completion
+        )
+        return prompt
+
+    def _build_rag_prompt(
+        self,
+        user_message: str,
+        history: List[Dict[str, Any]],
+        video_id: str,
+    ) -> Optional[str]:
+        """Build a retrieval-augmented prompt using FAISS top-k chunks for the given video.
+
+        Returns None if retrieval fails or yields no results, so caller can fallback.
         """
-        conversation = self.load_conversation(user_id, video_id)
-        messages = []
+        try:
+            dim = get_embedding_model().get_sentence_embedding_dimension()
+            store = FaissVectorStore(dim)
+            store.load()
 
-        for msg in conversation["messages"]:
-            if msg["role"] == "user":
-                messages.append(HumanMessage(content=msg["content"]))
-            elif msg["role"] == "assistant":
-                messages.append(AIMessage(content=msg["content"]))
+            qv = embed_query(user_message)
+            results = store.search(qv, top_k=settings.TOP_K)
+            # Filter to current video_id first
+            vid_results = [r for r in results if r.metadata.get("video_id") == video_id]
+            if not vid_results:
+                vid_results = results
 
-        return messages
+            if not vid_results:
+                return None
+
+            # Compose citations/context
+            context_lines = []
+            for r in vid_results:
+                cid = r.metadata.get("chunk_id")
+                txt = (r.metadata.get("text") or "").strip()
+                if not txt:
+                    continue
+                context_lines.append(f"[c{cid}] {txt}")
+
+            # History formatting
+            formatted_history = []
+            for msg in history[-self.max_history:]:
+                role = "User" if msg["role"] == "user" else "Assistant"
+                formatted_history.append(f"{role}: {msg['content']}")
+            history_block = "\n".join(formatted_history)
+
+            system_prompt = (
+                "You are a helpful AI assistant helping users learn from a YouTube video.\n\n"
+                "Answer STRICTLY using the provided context chunks. Cite sources inline using the chunk id like [c3].\n"
+                "If the answer is not in the context, say you don't find it in the transcript/context.\n"
+            )
+
+            context_block = "\n".join(context_lines)
+
+            prompt = (
+                f"{system_prompt}\n"
+                f"Context Chunks (most relevant first):\n---\n{context_block}\n---\n\n"
+                f"Conversation History:\n{history_block}\n\n"
+                f"User: {user_message}\nAssistant:"
+            )
+            return prompt
+        except Exception:
+            return None
 
     def chat(
         self,
@@ -201,80 +265,36 @@ class ConversationManager:
         message: str,
         transcript: Optional[str] = None,
     ) -> str:
-        """Send a chat message and get response.
-
-        Args:
-            user_id: User identifier
-            video_id: Video identifier
-            message: User's message
-            transcript: Video transcript (optional, will use stored if available)
-
-        Returns:
-            Assistant's response
-        """
-        # Load or set transcript
+        """Send a chat message and get a response using configured backend."""
         conversation = self.load_conversation(user_id, video_id)
 
+        # Attach transcript if newly provided
         if transcript and not conversation.get("transcript"):
             self.set_transcript(user_id, video_id, transcript)
             conversation = self.load_conversation(user_id, video_id)
 
         stored_transcript = conversation.get("transcript", "")
 
-        # Build the prompt
-        system_prompt = """You are a helpful AI assistant helping users learn from YouTube videos.
+        # Prefer RAG prompt if enabled
+        prompt = None
+        if self.use_rag:
+            prompt = self._build_rag_prompt(message, conversation.get("messages", []), video_id)
+        if not prompt:
+            prompt = self._build_prompt(stored_transcript, conversation.get("messages", []), message)
 
-You have access to the video's transcript and can answer questions about:
-- The content and main topics covered
-- Specific details or explanations
-- Clarifications on concepts
-- Connections between ideas
-- Practical applications
+        # Optional debug: print prompt if environment variable set
+        try:
+            import os
+            if os.getenv("ASKTUBE_DEBUG_PROMPT") == "1":
+                print("\n[DEBUG] Prompt Sent To Backend:\n" + "="*40 + "\n" + prompt + "\n" + "="*40 + "\n")
+        except Exception:
+            pass
 
-Provide clear, accurate, and helpful responses based on the transcript content.
+        response = self.backend.generate(prompt, max_tokens=self.max_output_tokens, temperature=self.temperature)
 
-VIDEO TRANSCRIPT:
----
-{transcript}
----
-"""
-
-        # Create LangChain components
-        llm = ChatGoogleGenerativeAI(
-            model=self.model,
-            google_api_key=self.api_key,
-            temperature=0.3,
-            max_output_tokens=512,
-        )
-
-        # Get recent message history
-        history_messages = self.get_messages_as_langchain(user_id, video_id)
-
-        # Build prompt template
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", system_prompt),
-                MessagesPlaceholder(variable_name="history"),
-                ("human", "{input}"),
-            ]
-        )
-
-        # Create chain
-        chain = prompt | llm | StrOutputParser()
-
-        # Invoke chain
-        response = chain.invoke(
-            {
-                "transcript": stored_transcript[:15000],  # Limit context size
-                "history": history_messages[-self.max_history :],
-                "input": message,
-            }
-        )
-
-        # Save messages
+        # Persist messages
         self.add_message(user_id, video_id, "user", message)
         self.add_message(user_id, video_id, "assistant", response)
-
         return response
 
     def clear_conversation(self, user_id: str, video_id: str) -> bool:
@@ -330,31 +350,12 @@ VIDEO TRANSCRIPT:
 
 
 if __name__ == "__main__":
-    # Simple test
-    manager = ConversationManager()
-
-    # Test conversation
+    # Simple local test (will use Ollama by default). Ensure Ollama & model are available.
+    manager = ConversationManager(backend_type="ollama", model="qwen2.5:7b")
     user_id = "test_user"
     video_id = "test_video"
-
-    # Set transcript
-    manager.set_transcript(
-        user_id, video_id, "This is a test transcript about Python programming."
-    )
-
-    # Send messages
-    response1 = manager.chat(user_id, video_id, "What is this video about?")
-    print(f"Q: What is this video about?")
-    print(f"A: {response1}\n")
-
-    response2 = manager.chat(user_id, video_id, "Can you elaborate?")
-    print(f"Q: Can you elaborate?")
-    print(f"A: {response2}\n")
-
-    # List conversations
-    convs = manager.list_conversations(user_id)
-    print(f"Conversations: {len(convs)}")
-
-    # Cleanup
-    manager.clear_conversation(user_id, video_id)
-    print("Conversation cleared")
+    manager.set_transcript(user_id, video_id, "This is a short transcript about Python lists and loops.")
+    r1 = manager.chat(user_id, video_id, "Summarize the topic.")
+    print("Response 1:", r1[:300])
+    r2 = manager.chat(user_id, video_id, "Give one example.")
+    print("Response 2:", r2[:300])

@@ -23,3 +23,8 @@ weasyprint>=60.0
 
 # Optional: For better console output on Windows
 colorama>=0.4.6
+
+# RAG components
+sentence-transformers>=2.2.2
+faiss-cpu>=1.8.0.post1
+huggingface_hub<1.0
