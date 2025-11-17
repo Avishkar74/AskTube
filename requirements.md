@@ -1,10 +1,10 @@
 # AskTube Requirements Document
 
-Version: 0.1
+Version: 0.2
 Date: 2025-11-18
 
 ## Overview
-AskTube converts YouTube video content (or provided transcripts) into structured learning materials (summary, detailed notes, mind map, enhanced PDF/HTML) and provides an interactive chat interface. Roadmap includes evolving simple prompt injection of full transcript into a proper Retrieval-Augmented Generation (RAG) workflow backed by MongoDB Atlas Vector Search.
+AskTube converts YouTube video content (or provided transcripts) into structured learning materials (summary, detailed notes, mind map, enhanced PDF/HTML) and provides an interactive chat interface. RAG is implemented locally using FAISS with SentenceTransformers embeddings (all-MiniLM-L6-v2), with optional future migration to MongoDB for persistence.
 
 ---
 ## Progress Summary
@@ -13,7 +13,7 @@ AskTube converts YouTube video content (or provided transcripts) into structured
 | Core User Features | 6 | 9 | 66% |
 | Chat Enhancements | 2 | 5 | 40% |
 | Persistence & Storage | 1 | 7 | 14% |
-| RAG Integration | 0 | 6 | 0% |
+| RAG Integration | 5 | 6 | 83% |
 | Tooling / DX / Docs | 0 | 7 | 0% |
 | Testing & Quality | 0 | 5 | 0% |
 | Future Learning Features | 0 | 4 | 0% |
@@ -44,7 +44,7 @@ Legend: Completed items are implemented & smoke tested; partial means in progres
 | U5 | Fast local LLM option (Ollama) | ✅ |
 | U6 | Cloud LLM option (Gemini) | ✅ (legacy, still supported) |
 | U7 | Interactive chat about transcript | ✅ (basic prompt stuffing) |
-| U8 | Retrieval-based accurate answers with cited chunks | ⏳ (RAG planned) |
+| U8 | Retrieval-based accurate answers with cited chunks | ✅ (local FAISS RAG) |
 | U9 | Quiz / flashcard generation | ⏳ |
 | U10 | Clear error messages for missing video ID / transcript | ✅ |
 | U11 | Ability to specify model names | ✅ |
@@ -75,14 +75,14 @@ Legend: Completed items are implemented & smoke tested; partial means in progres
 | F8 | Chat interface with backend abstraction | ✅ | `conversation_manager.py` refactored |
 | F9 | Support multiple LLM backends (Ollama, Gemini) | ✅ | `llm_backend.py` |
 | F10 | Add backend auto-selection | ⏳ | Planned improvement |
-| F11 | Config layer using pydantic-settings | ⏳ | Not implemented yet |
+| F11 | Config layer using pydantic-settings | ✅ | `config.py` with `.env` (extra keys ignored) |
 | F12 | Persistence abstraction interface | ⏳ | To create (file vs Mongo) |
 | F13 | MongoDB storage for conversations | ⏳ | |
-| F14 | Transcript chunking (token-aware heuristic) | ⏳ | RAG module planned |
-| F15 | Embedding generation (SentenceTransformers / Ollama) | ⏳ | Model installed locally |
-| F16 | Vector storage (MongoDB Atlas Vector) | ⏳ | Needs index + adapter |
-| F17 | Retrieval + prompt construction with citations | ⏳ | |
-| F18 | Re-index logic based on transcript hash | ⏳ | |
+| F14 | Transcript chunking (token-aware heuristic) | ✅ | `rag_chunker.py` |
+| F15 | Embedding generation (SentenceTransformers / Ollama) | ✅ | `rag_embeddings.py` (all-MiniLM-L6-v2, dim=384) |
+| F16 | Vector storage (MongoDB Atlas Vector) | 🔁 | Using FAISS locally now (`rag_faiss_store.py`) |
+| F17 | Retrieval + prompt construction with citations | ✅ | `conversation_manager.py` RAG builder |
+| F18 | Re-index logic based on transcript hash | ✅ | `rag_indexer.py` |
 | F19 | Quiz generation module | ⏳ | |
 | F20 | CLI cache management operations | ⏳ | |
 | F21 | Structured logging replacing prints | ⏳ | |
@@ -104,13 +104,13 @@ Legend: Completed items are implemented & smoke tested; partial means in progres
 ### RAG Roadmap Requirements
 | ID | Requirement | Status |
 |----|-------------|--------|
-| R1 | Chunk transcript into overlapping segments | ⏳ |
-| R2 | Generate embeddings per chunk | ⏳ |
-| R3 | Store embeddings + metadata in vector collection | ⏳ |
-| R4 | Query embedding for user question and get top-k chunks | ⏳ |
-| R5 | Build prompt from retrieved chunks + short history | ⏳ |
-| R6 | Append chunk citations to answer | ⏳ |
-| R7 | Rebuild index only if transcript hash changes | ⏳ |
+| R1 | Chunk transcript into overlapping segments | ✅ |
+| R2 | Generate embeddings per chunk | ✅ |
+| R3 | Store embeddings + metadata in vector collection | ✅ (FAISS + JSON metadata) |
+| R4 | Query embedding for user question and get top-k chunks | ✅ |
+| R5 | Build prompt from retrieved chunks + short history | ✅ |
+| R6 | Append chunk citations to answer | ✅ |
+| R7 | Rebuild index only if transcript hash changes | ✅ |
 
 ### Future Learning Features
 | ID | Requirement | Status | Notes |
@@ -129,11 +129,13 @@ Legend: Completed items are implemented & smoke tested; partial means in progres
 | MONGO_DB_NAME | Database name | Planned | `asktube` |
 | MONGO_VECTOR_COLLECTION | Vector chunk collection | Planned | `transcript_chunks` |
 | MONGO_CONVERSATIONS_COLLECTION | Conversation history collection | Planned | `conversations` |
-| EMBEDDING_MODEL | Embedding model identifier | Planned | `sentence-transformers/all-MiniLM-L6-v2` |
-| USE_RAG | Enable retrieval in chat | Planned | `true` |
-| CHUNK_TOKEN_TARGET | Approx tokens per chunk | Planned | `220` |
-| CHUNK_OVERLAP | Overlap tokens | Planned | `40` |
-| TOP_K | Retrieval top-k results | Planned | `5` |
+| EMBEDDING_MODEL | Embedding model identifier | Current | `sentence-transformers/all-MiniLM-L6-v2` |
+| USE_RAG | Enable retrieval in chat | Current | `true`/`false` |
+| CHUNK_TOKEN_TARGET | Approx tokens per chunk | Current | `220` |
+| CHUNK_OVERLAP | Overlap tokens | Current | `40` |
+| TOP_K | Retrieval top-k results | Current | `5` |
+| FAISS_INDEX_PATH | FAISS index file path | Current | `vector_store/faiss.index` |
+| FAISS_META_PATH | FAISS metadata JSON path | Current | `vector_store/metadata.json` |
 | VECTOR_INDEX_NAME | Atlas vector index name | Planned | `vector_index` |
 | LOG_LEVEL | Logging verbosity | Planned | `info` |
 
@@ -182,8 +184,8 @@ Legend: Completed items are implemented & smoke tested; partial means in progres
 ## Open Questions / Decisions
 | Topic | Question | Pending Action |
 |-------|----------|----------------|
-| Embeddings | Use local Ollama embedding model or MiniLM long-term? | Decide & set EMBEDDING_MODEL |
-| Vector Index | Create Atlas index manually or provide script? | Need index creation script (future) |
+| Embeddings | Use local Ollama embedding model or MiniLM long-term? | Using MiniLM now; configurable via `EMBEDDING_MODEL` |
+| Vector Index | Create Atlas index manually or provide script? | Using FAISS locally; Atlas plan deferred |
 | Persistence | Migrate chat history to Mongo immediately? | Decide priority vs RAG work |
 | Transcript Hash | Use SHA-256 for re-index detection? | Implement in indexing module |
 | Quiz Generation | Which format (MCQ JSON schema)? | Define schema before implementation |
@@ -201,16 +203,12 @@ Legend: Completed items are implemented & smoke tested; partial means in progres
 
 ---
 ## Implementation Roadmap (Next Sprints)
-1. Config module & environment variable validation.
-2. Persistence abstraction + file backend adapter.
-3. Mongo persistence for conversations.
-4. RAG modules: chunker, embeddings, vector store, indexer.
-5. Retrieval integration & citations.
-6. Transcript hashing + conditional re-index.
-7. Structured logging.
-8. Quiz generator (post RAG).
-9. Documentation & diagrams.
-10. Extended test coverage (RAG retrieval correctness, persistence).
+1. Persistence abstraction + file backend adapter.
+2. Mongo persistence for conversations (optional).
+3. Structured logging.
+4. Quiz generator (post RAG).
+5. Documentation & diagrams (RAG flow, CLI flags).
+6. Extended test coverage (RAG retrieval correctness, persistence, CLI).
 
 ---
 ## Acceptance Criteria (Selected)
@@ -236,15 +234,14 @@ Legend: Completed items are implemented & smoke tested; partial means in progres
 - [x] Caching system
 - [x] LLM backend abstraction
 - [x] Chat prompt stuffing version
+- [x] Config module (`config.py`) with `.env`
+- [x] RAG indexing (chunk → embed → FAISS)
+- [x] RAG retrieval in chat with citations
+- [x] Chat CLI auto-index + `--use-rag` / `--no-rag` / `--force-reindex`
 
 ### In Progress / Pending
-- [ ] Config module
 - [ ] Persistence backend interface
 - [ ] Mongo conversation persistence
-- [ ] RAG chunking & embedding pipeline
-- [ ] Vector search integration
-- [ ] Retrieval-based chat prompting with citations
-- [ ] Transcript hash re-index logic
 - [ ] Structured logging
 - [ ] Quiz / flashcard generator
 - [ ] CLI enhancements (cache ops, backend auto)
@@ -259,4 +256,27 @@ Legend: Completed items are implemented & smoke tested; partial means in progres
 
 ---
 ## Next Action
-Prioritize: Config module + RAG foundation (chunker + embeddings + vector store adapter) to unlock retrieval chat.
+Prioritize: Persistence abstraction + logging; add README section for RAG usage and chat CLI flags.
+
+---
+## Quick Start (Chat with RAG)
+
+- Install dependencies:
+  ```powershell
+  C:\Users\chava\Desktop\Projects\asktube\.venv\Scripts\python.exe -m pip install -r requirements.txt
+  ```
+
+- Ensure Ollama is running and model is available:
+  ```powershell
+  ollama pull qwen2.5:7b
+  ```
+
+- Chat from a URL (auto-fetch transcript, auto-index for RAG):
+  ```powershell
+  C:\Users\chava\Desktop\Projects\asktube\.venv\Scripts\python.exe chat_cli.py "https://www.youtube.com/watch?v=GuyZspG3-Po" --backend ollama --model qwen2.5:7b --use-rag
+  ```
+
+- Optional: force re-index if transcript changed:
+  ```powershell
+  C:\Users\chava\Desktop\Projects\asktube\.venv\Scripts\python.exe chat_cli.py "https://www.youtube.com/watch?v=GuyZspG3-Po" --backend ollama --model qwen2.5:7b --use-rag --force-reindex
+  ```
