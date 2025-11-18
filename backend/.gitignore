@@ -1,0 +1,50 @@
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments and secrets
+.venv/
+venv/
+.env
+.env.*
+.python-version
+
+# Build and packaging
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# Logs
+logs/
+*.log
+
+# Test and coverage artifacts
+.pytest_cache/
+.cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Type checker caches
+.mypy_cache/
+.pytype/
+.pyrightcache/
+
+# Linters
+.ruff_cache/
+
+# Editors and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+
+# Uvicorn/Dev server artifacts
+.reload

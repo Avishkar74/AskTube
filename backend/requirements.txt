@@ -1,5 +1,4 @@
-# AskTube - YouTube Learning Assistant
-# Python Dependencies
+# AskTube backend - Python Dependencies
 
 # Core dependencies
 python-dotenv>=1.0.0
@@ -35,8 +34,9 @@ ollama>=0.1.8
 # FastAPI backend
 fastapi>=0.111.0
 uvicorn[standard]>=0.30.0
-motor>=3.3.2
-pymongo[srv]>=4.8.0
+# Pin compatible Motor/PyMongo versions to avoid import errors
+motor==3.3.2
+pymongo[srv]==4.6.3
 python-multipart>=0.0.9
 # Optional structured logging
 loguru>=0.7.2

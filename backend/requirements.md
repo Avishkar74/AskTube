@@ -6,8 +6,33 @@ Date: 2025-11-18
 ## Overview
 AskTube converts YouTube video content (or provided transcripts) into structured learning materials (summary, detailed notes, mind map, enhanced PDF/HTML) and provides an interactive chat interface. RAG is implemented locally using FAISS with SentenceTransformers embeddings (all-MiniLM-L6-v2), with optional future migration to MongoDB for persistence.
 
+## Backend API (FastAPI) — Current Status
+
+- FastAPI app lives under `backend/app` with versioned routes at `/api/v1`.
+- Interactive docs are at `/api/docs` (Swagger) and `/api/redoc` (ReDoc).
+- OpenAPI spec is at `/api/openapi.json`.
+- MongoDB connection uses Motor with ping + retry; configuration is loaded from `backend/.env`.
+- Dev defaults: `MONGODB_URI=mongodb://localhost:27017`, `MONGODB_DB_NAME=AskTube`.
+
+### How to Run (Windows PowerShell)
+
+```powershell
+cd backend
+python -m pip install -r requirements.txt
+python -m uvicorn app.main:app --reload
+# Docs:  http://127.0.0.1:8000/api/docs
+# Health: http://127.0.0.1:8000/api/v1/health
+# Ready:  http://127.0.0.1:8000/api/v1/ready
+```
+
+Notes:
+- Seeing `{ "detail": "Not Found" }` at `/` or `/docs` is expected; use the prefixed paths under `/api/...`.
+- For deployment, override `MONGODB_URI` with your hosted connection string (e.g., Atlas `mongodb+srv://...`).
+
 ---
+
 ## Progress Summary
+
 | Category | Completed | Total | Percent |
 |----------|-----------|-------|---------|
 | Core User Features | 6 | 9 | 66% |
@@ -125,8 +150,9 @@ Legend: Completed items are implemented & smoke tested; partial means in progres
 | Variable | Purpose | Required | Example |
 |----------|---------|----------|---------|
 | GOOGLE_API_KEY | Gemini backend key | Optional | `AIza...` |
-| MONGO_URI | MongoDB Atlas connection string | Planned (RAG/persistence) | `mongodb+srv://user:pass@cluster/...` |
-| MONGO_DB_NAME | Database name | Planned | `asktube` |
+| MONGODB_URI | MongoDB connection string (local or hosted) | Current | `mongodb://localhost:27017` or `mongodb+srv://user:pass@cluster/...` |
+| MONGODB_DB_NAME | Database name | Current | `AskTube` |
+| ALLOWED_ORIGINS | Frontend origin(s), comma-separated | Current | `http://localhost:5173` |
 | MONGO_VECTOR_COLLECTION | Vector chunk collection | Planned | `transcript_chunks` |
 | MONGO_CONVERSATIONS_COLLECTION | Conversation history collection | Planned | `conversations` |
 | EMBEDDING_MODEL | Embedding model identifier | Current | `sentence-transformers/all-MiniLM-L6-v2` |
@@ -203,12 +229,13 @@ Legend: Completed items are implemented & smoke tested; partial means in progres
 
 ---
 ## Implementation Roadmap (Next Sprints)
-1. Persistence abstraction + file backend adapter.
-2. Mongo persistence for conversations (optional).
-3. Structured logging.
-4. Quiz generator (post RAG).
-5. Documentation & diagrams (RAG flow, CLI flags).
-6. Extended test coverage (RAG retrieval correctness, persistence, CLI).
+1. Structured logging middleware (request IDs, latency, error capture) for the API.
+2. Persistence abstraction + file backend adapter.
+3. Mongo persistence for conversations (optional, behind a flag).
+4. API smoke tests: `/health`, `/ready`, `/chat`, `/process` (LLM/Mongo mocked).
+5. Documentation & diagrams (RAG flow, CLI flags, API quick start).
+6. Optional Docker Compose for local Mongo and API.
+7. Extended test coverage (RAG retrieval correctness, persistence, CLI).
 
 ---
 ## Acceptance Criteria (Selected)
@@ -256,7 +283,23 @@ Legend: Completed items are implemented & smoke tested; partial means in progres
 
 ---
 ## Next Action
-Prioritize: Persistence abstraction + logging; add README section for RAG usage and chat CLI flags.
+Prioritize: Add API logging middleware and smoke tests; finalize persistence abstraction design; document API quick start and `/api/docs` usage in README.
+
+---
+## Quick Start (Backend API)
+
+- Install and run API:
+  ```powershell
+  cd backend
+  python -m pip install -r requirements.txt
+  python -m uvicorn app.main:app --reload
+  ```
+
+- Open docs and health:
+  - Swagger UI: `http://127.0.0.1:8000/api/docs`
+  - ReDoc: `http://127.0.0.1:8000/api/redoc`
+  - Health: `http://127.0.0.1:8000/api/v1/health`
+  - Ready:  `http://127.0.0.1:8000/api/v1/ready`
 
 ---
 ## Quick Start (Chat with RAG)
