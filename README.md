@@ -434,3 +434,9 @@ For questions or issues, please open an issue on GitHub or contact [your-email].
 **Made with Claude Code** 🤖
 
 Now improved with a FastAPI backend, RAG, and Chat CLI.
+
+## Security & Secrets
+
+- Do not commit `.env` files or secrets. They’re already added to `.gitignore` in this repo.
+- If any secret was previously committed, rotate it immediately (generate a new API key/DB password) and consider purging it from git history using BFG Repo-Cleaner or `git filter-repo`.
+- Prefer environment variables or secret managers in CI/CD and production.
