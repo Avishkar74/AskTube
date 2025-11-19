@@ -16,6 +16,7 @@ from .db.mongo import init_mongo, close_mongo
 from .api.v1.routes_health import router as health_router
 from .api.v1.routes_reports import router as reports_router
 from .api.v1.routes_chat import router as chat_router
+from .api.v1.routes_config import router as config_router
 from .middleware.request_logging import RequestLoggingMiddleware
 
 
@@ -63,6 +64,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router, prefix=f"{settings.API_PREFIX}/v1", tags=["health"]) 
     app.include_router(reports_router, prefix=f"{settings.API_PREFIX}/v1", tags=["reports"]) 
     app.include_router(chat_router, prefix=f"{settings.API_PREFIX}/v1", tags=["chat"]) 
+    app.include_router(config_router, prefix=f"{settings.API_PREFIX}/v1", tags=["config"]) 
 
     return app
 

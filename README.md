@@ -137,6 +137,9 @@ Assuming the backend is running with `uvicorn backend.app.main:create_app --fact
 curl http://127.0.0.1:8000/api/v1/health
 curl http://127.0.0.1:8000/api/v1/ready
 
+# Frontend config
+curl http://127.0.0.1:8000/api/v1/config
+
 # Start processing a video (background job)
 curl -X POST http://127.0.0.1:8000/api/v1/process ^
   -H "Content-Type: application/json" ^
