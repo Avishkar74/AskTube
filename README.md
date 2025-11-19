@@ -61,6 +61,26 @@ export GOOGLE_API_KEY=your_gemini_api_key_here
 
 ## Usage
 
+## Quick Start
+
+For a 5-minute setup, see `QUICKSTART.md`. Below are the essentials:
+
+```powershell
+# 1) Create venv and install deps
+python -m venv .venv
+& .\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+# 2) Set env (optional for Gemini/backend)
+echo GOOGLE_API_KEY=your_key_here > .env
+
+# 3) Run CLI on a video URL
+python asktube.py "https://www.youtube.com/watch?v=VIDEO_ID"
+
+# 4) Generate a polished PDF (or HTML fallback)
+python asktube.py URL --generate-pdf
+```
+
 ### Process a YouTube Video
 
 ```bash
@@ -108,13 +128,48 @@ python asktube.py URL --force-reindex
 python asktube.py --help
 ```
 
+## API Examples
+
+Assuming the backend is running with `uvicorn backend.app.main:create_app --factory --reload` at `http://127.0.0.1:8000`:
+
+```powershell
+# Health and readiness
+curl http://127.0.0.1:8000/api/v1/health
+curl http://127.0.0.1:8000/api/v1/ready
+
+# Start processing a video (background job)
+curl -X POST http://127.0.0.1:8000/api/v1/process ^
+  -H "Content-Type: application/json" ^
+  -d '{"youtube_url":"https://www.youtube.com/watch?v=GuyZspG3-Po","force_reindex":false}'
+
+# List reports with pagination
+curl "http://127.0.0.1:8000/api/v1/reports?limit=10&offset=0"
+
+# Get a report (replace {id})
+curl http://127.0.0.1:8000/api/v1/reports/{id}
+
+# Download HTML/PDF artifact
+curl -L "http://127.0.0.1:8000/api/v1/reports/{id}/download?type=html" -o report.html
+curl -L "http://127.0.0.1:8000/api/v1/reports/{id}/download?type=pdf" -o report.pdf
+
+# Chat about a video (by URL) with optional RAG params
+curl -X POST http://127.0.0.1:8000/api/v1/chat ^
+  -H "Content-Type: application/json" ^
+  -d '{"youtube_url":"https://www.youtube.com/watch?v=GuyZspG3-Po","message":"What are the key ideas?","top_k":5}'
+
+# Transcript and RAG chunks
+curl http://127.0.0.1:8000/api/v1/videos/GuyZspG3-Po/transcript
+curl http://127.0.0.1:8000/api/v1/videos/GuyZspG3-Po/chunks
+curl http://127.0.0.1:8000/api/v1/videos/GuyZspG3-Po/rag
+```
+
 ### Chat About a Video (Chat CLI)
 
 Interactive Q&A about a YouTube video with optional RAG and backend selection:
 
 ```bash
 python chat_cli.py "https://www.youtube.com/watch?v=VIDEO_ID" \
-	--user-id alice -b ollama -m qwen2.5:7b --use-rag
+  --user-id alice -b ollama -m qwen2.5:7b --use-rag
 
 # Or chat from a transcript file
 python chat_cli.py --transcript transcript.txt --video-id my_video --use-rag
