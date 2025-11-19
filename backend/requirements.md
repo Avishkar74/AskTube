@@ -1,9 +1,10 @@
 # AskTube Requirements Document
 
-Version: 0.2
-Date: 2025-11-18
+Version: 0.3
+Date: 2025-11-19
 
 ## Overview
+
 AskTube converts YouTube video content (or provided transcripts) into structured learning materials (summary, detailed notes, mind map, enhanced PDF/HTML) and provides an interactive chat interface. RAG is implemented locally using FAISS with SentenceTransformers embeddings (all-MiniLM-L6-v2), with optional future migration to MongoDB for persistence.
 
 ## Backend API (FastAPI) — Current Status
@@ -26,6 +27,7 @@ python -m uvicorn app.main:app --reload
 ```
 
 Notes:
+
 - Seeing `{ "detail": "Not Found" }` at `/` or `/docs` is expected; use the prefixed paths under `/api/...`.
 - For deployment, override `MONGODB_URI` with your hosted connection string (e.g., Atlas `mongodb+srv://...`).
 
@@ -36,18 +38,21 @@ Notes:
 | Category | Completed | Total | Percent |
 |----------|-----------|-------|---------|
 | Core User Features | 6 | 9 | 66% |
-| Chat Enhancements | 2 | 5 | 40% |
+| Chat Enhancements | 4 | 6 | 67% |
 | Persistence & Storage | 1 | 7 | 14% |
-| RAG Integration | 5 | 6 | 83% |
-| Tooling / DX / Docs | 0 | 7 | 0% |
+| RAG Integration | 6 | 6 | 100% |
+| Tooling / DX / Docs | 1 | 7 | 14% |
 | Testing & Quality | 0 | 5 | 0% |
 | Future Learning Features | 0 | 4 | 0% |
 
 Legend: Completed items are implemented & smoke tested; partial means in progress or design locked.
 
 ---
+ 
 ## User Perspective Requirements
+
 ### Primary Use Cases
+
 1. Provide a YouTube URL and receive:
    - Transcript files (JSON, plain text, timestamped)
    - Summary (concise overview)
@@ -60,6 +65,8 @@ Legend: Completed items are implemented & smoke tested; partial means in progres
 5. (Planned) Generate study aids like quizzes and flashcards.
 
 ### User Experience Requirements
+
+ 
 | ID | Requirement | Status |
 |----|-------------|--------|
 | U1 | Simple CLI invocation with minimal flags | ✅ |
@@ -247,11 +254,15 @@ Legend: Completed items are implemented & smoke tested; partial means in progres
 | PDF Export | Generates either PDF (if weasyprint available) or HTML fallback with all sections |
 | Chat (Basic) | Answers limited to transcript content; prompts show transcript truncation boundary |
 | Chat (RAG) | Returns answers referencing retrieved chunks with at least one citation or states not found |
+| Chat (Timestamp) | Given a message containing a timestamp (e.g., 4:32), the answer uses nearby chunk(s) and returns citations with start/end seconds |
 | Re-index | Skips when transcript hash unchanged |
 
 ---
+ 
 ## Completed vs Pending Checklist
+
 ### Completed
+
 - [x] Transcript extraction
 - [x] Multi-format transcript saving
 - [x] Summary generation with chunking
@@ -265,8 +276,11 @@ Legend: Completed items are implemented & smoke tested; partial means in progres
 - [x] RAG indexing (chunk → embed → FAISS)
 - [x] RAG retrieval in chat with citations
 - [x] Chat CLI auto-index + `--use-rag` / `--no-rag` / `--force-reindex`
+- [x] Timestamp-aware Q&A (window param) with citations containing `start_sec`/`end_sec`
+- [x] RAG status endpoint (`GET /api/v1/videos/{video_id}/rag`)
 
 ### In Progress / Pending
+
 - [ ] Persistence backend interface
 - [ ] Mongo conversation persistence
 - [ ] Structured logging
@@ -276,19 +290,30 @@ Legend: Completed items are implemented & smoke tested; partial means in progres
 - [ ] README architecture update
 
 ---
+ 
 ## Change Log
+
 | Date | Change | Author |
 |------|--------|--------|
 | 2025-11-18 | Initial comprehensive requirements document | Copilot Assistant |
+| 2025-11-19 | Timestamp Q&A + citations, RAG status endpoint, doc updates | Copilot Assistant |
 
 ---
+ 
 ## Next Action
-Prioritize: Add API logging middleware and smoke tests; finalize persistence abstraction design; document API quick start and `/api/docs` usage in README.
+
+Prioritize:
+
+1. Freeze API contracts (/chat with `top_k` and `window`, /process, /reports with pagination, /download, /videos/{video_id}/rag)
+2. Add transcript/chunks endpoints: `GET /videos/{video_id}/transcript` and `GET /videos/{video_id}/chunks`
+3. Add logging middleware and smoke tests; tighten CORS to frontend origin(s)
 
 ---
+ 
 ## Quick Start (Backend API)
 
 - Install and run API:
+
   ```powershell
   cd backend
   python -m pip install -r requirements.txt
@@ -302,24 +327,29 @@ Prioritize: Add API logging middleware and smoke tests; finalize persistence abs
   - Ready:  `http://127.0.0.1:8000/api/v1/ready`
 
 ---
+ 
 ## Quick Start (Chat with RAG)
 
 - Install dependencies:
+
   ```powershell
   C:\Users\chava\Desktop\Projects\asktube\.venv\Scripts\python.exe -m pip install -r requirements.txt
   ```
 
 - Ensure Ollama is running and model is available:
+
   ```powershell
   ollama pull qwen2.5:7b
   ```
 
 - Chat from a URL (auto-fetch transcript, auto-index for RAG):
+
   ```powershell
   C:\Users\chava\Desktop\Projects\asktube\.venv\Scripts\python.exe chat_cli.py "https://www.youtube.com/watch?v=GuyZspG3-Po" --backend ollama --model qwen2.5:7b --use-rag
   ```
 
 - Optional: force re-index if transcript changed:
+
   ```powershell
   C:\Users\chava\Desktop\Projects\asktube\.venv\Scripts\python.exe chat_cli.py "https://www.youtube.com/watch?v=GuyZspG3-Po" --backend ollama --model qwen2.5:7b --use-rag --force-reindex
   ```

@@ -72,7 +72,22 @@ class OllamaBackend(LLMBackend):
                 prompt=prompt,
                 options=options
             )
-            return response['response']
+            if response is None:
+                raise RuntimeError("Ollama returned no response object")
+            # Newer ollama client may return a typed object with `.response` attribute
+            if isinstance(response, dict):
+                if "response" not in response or response["response"] is None:
+                    raise RuntimeError("Ollama result missing 'response' field")
+                return str(response["response"])
+            if hasattr(response, "response"):
+                val = getattr(response, "response")
+                if val is None:
+                    raise RuntimeError("Ollama result attribute 'response' is None")
+                return str(val)
+            # Fallback: if response is a string, return it directly
+            if isinstance(response, str):
+                return response
+            raise RuntimeError(f"Unexpected Ollama response type: {type(response)}")
         except Exception as e:
             # Check if model not found
             if "model" in str(e).lower() and "not found" in str(e).lower():
@@ -99,9 +114,21 @@ class GeminiBackend(LLMBackend):
         self._initialize_client()
 
     def _get_api_key(self) -> str:
-        """Get API key from environment."""
-        from dotenv import load_dotenv
-        load_dotenv()
+        """Get API key from environment.
+
+        Loads .env from current working directory and searches upward to repo root
+        so running the backend from a subfolder still finds the root .env.
+        """
+        try:
+            from dotenv import load_dotenv, find_dotenv
+            env_path = find_dotenv(usecwd=True)
+            if env_path:
+                load_dotenv(env_path)
+            else:
+                load_dotenv()
+        except Exception:
+            # If dotenv not present, fallback to raw env only
+            pass
 
         api_key = (
             os.getenv("GOOGLE_API_KEY")

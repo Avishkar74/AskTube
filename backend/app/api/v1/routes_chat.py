@@ -6,7 +6,12 @@ from ...services.chat_service import chat_once
 router = APIRouter()
 
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post(
+    "/chat",
+    response_model=ChatResponse,
+    summary="Chat about a video",
+    description="Ask a question about a video using either `youtube_url` or `video_id`. Supports RAG, `top_k`, and timestamp queries with `window`.",
+)
 async def chat_endpoint(request: Request, payload: ChatRequest):
     try:
         answer, citations, meta = await chat_once(request.app, payload)

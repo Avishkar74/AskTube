@@ -5,7 +5,9 @@ from pathlib import Path
 
 class APISettings(BaseSettings):
     API_PREFIX: str = Field(default="/api")
-    ALLOWED_ORIGINS: str = Field(default="*")
+    # Comma-separated list of allowed CORS origins. Prefer setting this in .env.
+    # Default to local Vite dev server.
+    ALLOWED_ORIGINS: str = Field(default="http://localhost:5173")
     # Feature flags
     USE_RAG: bool = Field(default=False)
 

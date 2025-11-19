@@ -12,21 +12,20 @@ from app.main import app
 
 
 @pytest.mark.asyncio
-async def test_health_endpoint():
+async def test_request_id_header_is_added():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.get("/api/v1/health")
         assert resp.status_code == 200
-        data = resp.json()
-        assert "status" in data
-        assert "details" in data
+        assert "X-Request-ID" in resp.headers
+        assert resp.headers["X-Request-ID"].strip() != ""
 
 
 @pytest.mark.asyncio
-async def test_ready_endpoint():
+async def test_request_id_header_is_propagated_when_sent():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.get("/api/v1/ready")
+        custom_id = "test-correlation-123"
+        resp = await client.get("/api/v1/health", headers={"X-Request-ID": custom_id})
         assert resp.status_code == 200
-        data = resp.json()
-        assert "status" in data
+        assert resp.headers.get("X-Request-ID") == custom_id

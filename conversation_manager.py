@@ -82,7 +82,7 @@ class ConversationManager:
                 "user_id": user_id,
                 "video_id": video_id,
                 "messages": [],
-                "transcript": None,
+                "transcript": "",  # avoid None which breaks prompt slicing
                 "created_at": datetime.now().isoformat(),
                 "updated_at": datetime.now().isoformat(),
             }
@@ -96,7 +96,7 @@ class ConversationManager:
                 "user_id": user_id,
                 "video_id": video_id,
                 "messages": [],
-                "transcript": None,
+                "transcript": "",  # fallback to empty string
                 "created_at": datetime.now().isoformat(),
                 "updated_at": datetime.now().isoformat(),
             }
@@ -273,7 +273,7 @@ class ConversationManager:
             self.set_transcript(user_id, video_id, transcript)
             conversation = self.load_conversation(user_id, video_id)
 
-        stored_transcript = conversation.get("transcript", "")
+        stored_transcript = conversation.get("transcript") or ""
 
         # Prefer RAG prompt if enabled
         prompt = None
@@ -290,7 +290,20 @@ class ConversationManager:
         except Exception:
             pass
 
-        response = self.backend.generate(prompt, max_tokens=self.max_output_tokens, temperature=self.temperature)
+        try:
+            response = self.backend.generate(prompt, max_tokens=self.max_output_tokens, temperature=self.temperature)
+        except Exception as e:
+            # Graceful fallback if backend fails; include minimal diagnostic
+            response = (
+                "(Fallback response) Unable to reach LLM backend. "
+                "Summary of your request: " + message[:240]
+            )
+            try:
+                print(f"[WARN] Backend generate failed: {e}")
+            except Exception:
+                pass
+        if not isinstance(response, str):
+            response = "(Fallback response) Backend returned no text."
 
         # Persist messages
         self.add_message(user_id, video_id, "user", message)

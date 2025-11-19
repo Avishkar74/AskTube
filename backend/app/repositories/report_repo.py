@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -47,13 +47,20 @@ async def get_by_id(db: AsyncIOMotorDatabase, report_id: str) -> Optional[Dict[s
     return doc
 
 
-async def list_reports(db: AsyncIOMotorDatabase, video_id: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+async def list_reports(db: AsyncIOMotorDatabase, video_id: Optional[str] = None, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
     query: Dict[str, Any] = {}
     if video_id:
         query["video_id"] = video_id
-    cursor = db["reports"].find(query).sort("created_at", -1).limit(limit)
+    cursor = db["reports"].find(query).sort("created_at", -1).skip(max(0, int(offset))).limit(int(limit))
     items: List[Dict[str, Any]] = []
     async for doc in cursor:
         doc["_id"] = str(doc["_id"])  # stringify
         items.append(doc)
     return items
+
+
+async def count_reports(db: AsyncIOMotorDatabase, video_id: Optional[str] = None) -> int:
+    query: Dict[str, Any] = {}
+    if video_id:
+        query["video_id"] = video_id
+    return await db["reports"].count_documents(query)

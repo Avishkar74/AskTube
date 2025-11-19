@@ -2,6 +2,7 @@ from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from gridfs import NoFile
 from motor.motor_asyncio import AsyncIOMotorGridFSBucket
+from bson import ObjectId
 
 
 def get_gridfs_bucket(db: Optional[AsyncIOMotorDatabase]) -> Optional[AsyncIOMotorGridFSBucket]:
@@ -16,9 +17,16 @@ async def upload_bytes(bucket: AsyncIOMotorGridFSBucket, data: bytes, filename: 
 
 
 async def download_bytes(bucket: AsyncIOMotorGridFSBucket, file_id) -> bytes:
-    # file_id should be ObjectId or str; motor accepts str in open_download_stream
+    # Accept either ObjectId or str and normalize to ObjectId when possible
+    _fid = file_id
+    if isinstance(file_id, str):
+        try:
+            _fid = ObjectId(file_id)
+        except Exception:
+            # Fallback: let motor try the provided value
+            _fid = file_id
     try:
-        stream = await bucket.open_download_stream(file_id)
+        stream = await bucket.open_download_stream(_fid)
     except NoFile:
         raise FileNotFoundError("File not found in GridFS")
     chunks = bytearray()

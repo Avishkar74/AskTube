@@ -48,3 +48,13 @@ temp/
 
 # Uvicorn/Dev server artifacts
 .reload
+
+# Generated outputs and data
+outputs/
+outputs/**
+conversations/
+conversations/**
+backend_data/
+backend_data/**
+report_*.html
+*.html

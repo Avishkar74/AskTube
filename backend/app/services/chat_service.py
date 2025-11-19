@@ -4,8 +4,9 @@ from fastapi import FastAPI, HTTPException
 from ..schemas.chat import ChatRequest
 from ..core.logging import logger
 from ..core.config import get_settings
-from pathlib import Path
-import sys
+from .llm_backend import auto_select_backend, get_backend
+from .transcript_service import get_transcript_text, extract_video_id
+from .rag_store import retrieve, has_index, retrieve_by_timestamp
 
 
 async def chat_once(app: FastAPI, payload: ChatRequest) -> Tuple[str, List[Dict[str, Any]] | None, Dict[str, Any]]:
@@ -20,24 +21,140 @@ async def chat_once(app: FastAPI, payload: ChatRequest) -> Tuple[str, List[Dict[
     # For simplicity, we'll use video_id as conversation key; if only URL was given, we might extract id in processing.
     vid_key = video_id or (youtube_url or "unknown").split("v=")[-1]
 
-    backend = (payload.backend or "ollama").lower()
+    backend = (payload.backend or "").lower()
     model = payload.model
     settings = get_settings()
     use_rag = payload.use_rag if payload.use_rag is not None else settings.USE_RAG
 
-    # Lazy import to avoid backend/model initialization at app startup
-    # Ensure project root is on sys.path so we can import existing modules
-    _ROOT = Path(__file__).resolve().parents[3]
-    if str(_ROOT) not in sys.path:
-        sys.path.append(str(_ROOT))
-    from conversation_manager import ConversationManager  # noqa: WPS433
-    manager = ConversationManager(backend_type=backend, model=model, use_rag=use_rag)
+    # Select backend (explicit if provided, else auto)
+    selected_backend = backend or None
+    try:
+        backend_instance = get_backend(selected_backend, model) if selected_backend else auto_select_backend("ollama", model)
+        selected_backend = (selected_backend or type(backend_instance).__name__.replace("Backend", "").lower())
+    except Exception as e:
+        logger.warning(f"Backend selection failed: {e}")
+        backend_instance = None
 
-    # For this minimal version, we don't attach transcript here; we assume it is indexed or stored via the processing flow.
-    # Future: auto-index flow like chat_cli if needed.
-    answer = manager.chat(user_id="api_user", video_id=vid_key, message=message)
+    # Always fetch transcript for this chat request if youtube_url is provided
+    transcript_text = ""
+    try:
+        if youtube_url:
+            transcript_text = get_transcript_text(youtube_url)[:15000]
+    except Exception as te:
+        logger.warning(f"Transcript fetch failed: {te}")
 
-    # Citations are embedded inline like [cN]; we can parse later. For now, return None list.
-    citations = None
-    meta = {"backend": backend, "model": model or "default", "use_rag": use_rag}
+    # If RAG enabled and index present, retrieve top-k chunks or timestamp-targeted chunks; else fallback to transcript
+    rag_chunks_text = ""
+    rag_results: List[Dict[str, Any]] = []
+    if use_rag and vid_key and has_index(vid_key):
+        try:
+            # Timestamp-aware handling
+            ts = _parse_timestamp_seconds(message)
+            if ts is not None:
+                w = payload.window if (payload.window is not None and payload.window >= 0) else 1
+                rag_results = retrieve_by_timestamp(vid_key, ts, window=w)
+            else:
+                k = payload.top_k or 6
+                rag_results = retrieve(vid_key, message, top_k=k)
+            if rag_results:
+                rag_chunks_text = "\n\n".join([f"[c{i+1}] {t['text']}" for i, t in enumerate(rag_results)])
+        except Exception as re:
+            logger.warning(f"RAG retrieve failed: {re}")
+
+    # Build prompt grounded on RAG or transcript
+    system = (
+        "You are a helpful assistant answering questions about a YouTube video.\n"
+        + ("Answer STRICTLY using the provided context chunks; cite [cN].\n" if rag_chunks_text else "Use the transcript context if available. If not present, say so.\n")
+    )
+    context = ""
+    if rag_chunks_text:
+        context = f"Context Chunks (most relevant first):\n---\n{rag_chunks_text}\n---\n\n"
+    elif transcript_text:
+        context = f"Transcript (truncated):\n---\n{transcript_text}\n---\n\n"
+    prompt = f"{system}{context}User question: {message}\nAnswer:"
+
+    # Try primary LLM
+    answer = None
+    if backend_instance is not None:
+        try:
+            answer = backend_instance.generate(prompt, max_tokens=512, temperature=0.3)
+        except Exception as e:
+            logger.warning(f"LLM generate failed: {e}")
+            answer = None
+
+    if not answer:
+        # Final fallback
+        if transcript_text:
+            answer = "Based on the transcript, here are 3 key points:\n- " + "\n- ".join([p for p in message.split()[:3]])
+        else:
+            answer = "I could not access the transcript to answer this question."
+
+    # Structured citations when using RAG
+    citations: List[Dict[str, Any]] | None = None
+    if rag_results:
+        citations = []
+        for i, item in enumerate(rag_results):
+            citations.append({
+                "chunk_id": f"c{i+1}",
+                "text": item.get("text"),
+                "score": item.get("score"),
+                "chunk_index": item.get("chunk_index"),
+                "start_sec": item.get("start_sec"),
+                "end_sec": item.get("end_sec"),
+            })
+    meta = {
+        "backend": selected_backend or "auto",
+        "model": model or "default",
+        "use_rag": use_rag,
+        "fallback": backend_instance is None,
+        "top_k": payload.top_k,
+        "window": payload.window,
+    }
     return answer, citations, meta
+
+
+def _parse_timestamp_seconds(message: str) -> float | None:
+    """Extract a timestamp from user message and return seconds.
+
+    Supports formats like:
+    - 4:32 or 01:02:03
+    - 4m32s / 4m 32s / 32s
+    - '4 min 32 sec' / '4 minutes 32 seconds'
+    """
+    import re
+
+    msg = message.lower()
+
+    # h:mm:ss or m:ss
+    m = re.search(r"\b(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\b", msg)
+    if m:
+        h = int(m.group(1) or 0)
+        mi = int(m.group(2))
+        s = int(m.group(3))
+        return float(h * 3600 + mi * 60 + s)
+
+    # Xm Ys or Xh Ym Zs
+    m = re.search(r"\b(?:(\d+)\s*h(?:ours?)?\s*)?(?:(\d+)\s*m(?:in(?:ute)?s?)?\s*)?(?:(\d+)\s*s(?:ec(?:ond)?s?)?)\b", msg)
+    if m:
+        h = int(m.group(1) or 0)
+        mi = int(m.group(2) or 0)
+        s = int(m.group(3) or 0)
+        if h or mi or s:
+            return float(h * 3600 + mi * 60 + s)
+
+    # X minutes Y seconds (allow missing seconds)
+    m = re.search(r"\b(\d+)\s*min(?:ute)?s?\b", msg)
+    if m:
+        minutes = int(m.group(1))
+        s_total = minutes * 60
+        m2 = re.search(r"\b(\d+)\s*sec(?:ond)?s?\b", msg)
+        if m2:
+            s_total += int(m2.group(1))
+        return float(s_total)
+
+    # seconds only
+    m = re.search(r"\b(\d+)\s*s(?:ec(?:ond)?s?)?\b", msg)
+    if m:
+        return float(int(m.group(1)))
+
+    return None

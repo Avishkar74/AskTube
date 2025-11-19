@@ -51,6 +51,13 @@ outputs/*.mmd
 !outputs/.gitkeep
 input.txt
 trd.txt
+backend_data/
+backend_data/**
+conversations/
+conversations/**
+outputs/pdfs/
+outputs/pdfs/**
+report_*.html
 
 # Keep example outputs
 !outputs/example_*

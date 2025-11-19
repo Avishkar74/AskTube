@@ -7,6 +7,7 @@ from .db.mongo import init_mongo, close_mongo
 from .api.v1.routes_health import router as health_router
 from .api.v1.routes_reports import router as reports_router
 from .api.v1.routes_chat import router as chat_router
+from .middleware.request_logging import RequestLoggingMiddleware
 
 
 @asynccontextmanager
@@ -37,6 +38,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Request logging middleware (request-id + latency)
+    app.add_middleware(RequestLoggingMiddleware)
+
     app.router.lifespan_context = lifespan
 
     # Routers
@@ -48,3 +52,4 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+    # trigger reload
