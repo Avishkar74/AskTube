@@ -1,3 +1,10 @@
+"""Mongo connection lifecycle utilities (init/close/get).
+
+Implements resilient connection initialization with ping validation, limited
+retries with simple backoff, and attaches connection state to `app.state` for
+easy access by request handlers and health/readiness probes.
+"""
+
 from typing import Any
 
 from fastapi import FastAPI
@@ -14,6 +21,7 @@ RETRY_BACKOFF_SEC = 1.5
 
 
 async def _attempt_connect(uri: str) -> AsyncIOMotorClient | None:
+    """Attempt to connect and ping Mongo, returning a client or None."""
     try:
         client = AsyncIOMotorClient(uri, serverSelectionTimeoutMS=DEFAULT_CONNECT_TIMEOUT_MS)
         # Motor ping
@@ -25,6 +33,11 @@ async def _attempt_connect(uri: str) -> AsyncIOMotorClient | None:
 
 
 async def init_mongo(app: FastAPI) -> None:
+    """Initialize Mongo connection and attach handles to `app.state`.
+
+    Sets: `mongo_client`, `db`, `mongo_connected`, and `mongo_error` fields on
+    the application state for consumption throughout the API.
+    """
     settings = get_settings()
     uri = settings.mongo_uri
     app.state.mongo_error = None
@@ -53,6 +66,7 @@ async def init_mongo(app: FastAPI) -> None:
 
 
 async def close_mongo(app: FastAPI) -> None:
+    """Close Mongo client and clear connection state on the app."""
     client: AsyncIOMotorClient | None = getattr(app.state, "mongo_client", None)
     if client is not None:
         client.close()
@@ -62,4 +76,5 @@ async def close_mongo(app: FastAPI) -> None:
 
 
 def get_db(app: FastAPI) -> AsyncIOMotorDatabase | None:
+    """Helper to access the active database handle from the app."""
     return getattr(app.state, "db", None)

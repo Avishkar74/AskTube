@@ -1,3 +1,15 @@
+"""Reports, processing, and video data endpoints.
+
+Exposes:
+- `POST /process`: enqueue processing for a YouTube URL (background pipeline).
+- `GET /reports`: list reports with pagination and optional `video_id` filter.
+- `GET /reports/{id}`: retrieve a single report document.
+- `GET /reports/{id}/download`: stream HTML/PDF artifact from GridFS.
+- `GET /videos/{video_id}/rag`: minimal index status and chunk count.
+- `GET /videos/{video_id}/transcript`: transcript segments fetched on-demand.
+- `GET /videos/{video_id}/chunks`: stored RAG chunks with indices and timings.
+"""
+
 from typing import Optional, List
 from fastapi import APIRouter, Request, BackgroundTasks, HTTPException
 from fastapi.responses import StreamingResponse

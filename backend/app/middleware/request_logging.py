@@ -1,3 +1,10 @@
+"""Starlette middleware to attach request IDs and log latency.
+
+Adds/propagates an `X-Request-ID` header and logs a concise line per request
+including method, path, status, and duration in milliseconds. Exceptions are
+logged with the same request ID for correlation in logs.
+"""
+
 import time
 import uuid
 from typing import Callable

@@ -1,3 +1,15 @@
+"""Processing pipeline to produce artifacts and build RAG index.
+
+This orchestrates the end-to-end flow for a given YouTube URL:
+- Extract video_id and transcript (text and segments when available).
+- Build the FAISS index with timing-aware chunks (for RAG + timestamp UX).
+- Generate summary, notes, and mindmap via existing modules.
+- Export to PDF/HTML and upload resulting artifact to GridFS.
+- Persist status and artifact metadata in `reports` collection.
+
+Runs in a background task triggered by `POST /api/v1/process`.
+"""
+
 from typing import Optional, Tuple
 from fastapi import FastAPI
 
@@ -15,6 +27,14 @@ from pdf_exporter import EnhancedPDFExporter
 
 
 async def process_report(app: FastAPI, report_id: str, youtube_url: str, force_reindex: bool = False) -> None:
+    """Process a report end-to-end and persist artifacts/status.
+
+    Parameters:
+    - app: FastAPI application (for access to Mongo state).
+    - report_id: ID in the `reports` collection created by the API layer.
+    - youtube_url: Full YouTube URL provided by the user.
+    - force_reindex: Reserved for future logic to rebuild an existing index.
+    """
     db = app.state.db
     if db is None:
         logger.error("Database not configured; cannot process report")

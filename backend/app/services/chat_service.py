@@ -1,3 +1,20 @@
+"""Chat orchestration service.
+
+This service implements a single-shot chat flow that answers questions about a
+YouTube video using one of two strategies:
+
+1) Retrieval-Augmented Generation (RAG): If a FAISS index exists for the
+    `video_id`, top-k semantically similar chunks are retrieved or, when the
+    message contains a timestamp, the chunk(s) closest to that time are selected.
+    The LLM is grounded on these chunks and returns an answer with structured
+    citations including chunk indices and start/end timestamps.
+2) Transcript fallback: When no index exists or retrieval fails, a truncated
+    transcript is used to provide a lightweight answer or a friendly failure.
+
+The module also parses user-provided timestamps from natural formats like
+`4:32`, `01:02:03`, `4m32s`, `4 minutes 32 seconds`, etc.
+"""
+
 from typing import Tuple, List, Dict, Any
 from fastapi import FastAPI, HTTPException
 
@@ -10,6 +27,18 @@ from .rag_store import retrieve, has_index, retrieve_by_timestamp
 
 
 async def chat_once(app: FastAPI, payload: ChatRequest) -> Tuple[str, List[Dict[str, Any]] | None, Dict[str, Any]]:
+    """Answer a single user question about a video.
+
+    Flow:
+    - Resolve `video_id` (from payload or URL).
+    - Optionally fetch transcript text (for fallback/context).
+    - If RAG is enabled and an index exists, retrieve context chunks either by
+      semantic similarity (`top_k`) or by a parsed timestamp with an optional
+      `window` of neighboring chunks.
+    - Construct a grounded prompt for the selected LLM backend and generate.
+    - Return the model's answer along with structured citations (when RAG is used)
+      and a `meta` block describing backend/model and retrieval parameters.
+    """
     youtube_url = payload.youtube_url
     video_id = payload.video_id
     message = payload.message

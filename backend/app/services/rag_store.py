@@ -1,3 +1,19 @@
+"""Local FAISS-based RAG store for per-video retrieval.
+
+Responsibilities:
+- Build: Chunk transcript text or segment-aware transcript into fixed-size
+    pieces, embed with `sentence-transformers/all-MiniLM-L6-v2`, L2-normalize,
+    and persist FAISS IndexFlatIP plus JSON metadata (text with start/end times).
+- Query (semantic): Given a query string, embed and search top-k by inner
+    product similarity; return texts, scores, chunk indices, and timings.
+- Query (timestamp): Given a time in seconds, return the chunk containing or
+    nearest to the timestamp and optional neighbor window, preserving timings.
+- Introspection: Report stats and list all chunks for a video.
+
+Artifacts are stored under `backend_data/faiss/` as `<video_id>.index` and
+`<video_id>.meta.json`.
+"""
+
 from __future__ import annotations
 
 import json
@@ -16,6 +32,7 @@ _MODEL = None
 
 
 def _get_model():
+    """Return a cached embedding model instance."""
     global _MODEL
     if _MODEL is None:
         from sentence_transformers import SentenceTransformer  # type: ignore
@@ -24,11 +41,13 @@ def _get_model():
 
 
 def _normalize(v: np.ndarray) -> np.ndarray:
+    """L2-normalize a batch of vectors with numerical stability."""
     norms = np.linalg.norm(v, axis=1, keepdims=True) + 1e-12
     return v / norms
 
 
 def _chunk_text(text: str, chunk_chars: int = 800) -> List[Dict[str, object]]:
+    """Greedy fixed-size chunking for plain transcript text (no timings)."""
     if not text:
         return []
     chunks: List[Dict[str, object]] = []
@@ -46,6 +65,11 @@ def _chunk_text(text: str, chunk_chars: int = 800) -> List[Dict[str, object]]:
 
 
 def _chunk_segments(segments: List[Dict], chunk_chars: int = 800) -> List[Dict[str, object]]:
+    """Chunk transcript segments while preserving start/end seconds.
+
+    Accumulates segment texts until `chunk_chars` is exceeded, then flushes a
+    chunk with the timing window spanning the first and last included segments.
+    """
     chunks: List[Dict[str, object]] = []
     acc_text: List[str] = []
     acc_len = 0
@@ -95,6 +119,12 @@ def build_index(
     transcript_segments: Optional[List[Dict]] = None,
     base_dir: Optional[Path] = None,
 ) -> None:
+    """Compute and persist a FAISS index and metadata for a video.
+
+    Prefers segment-aware chunking when `transcript_segments` are provided so
+    that start/end times are carried into the stored metadata for citations and
+    timestamp navigation in the UI.
+    """
     base_dir = base_dir or Path(__file__).resolve().parents[3] / "backend_data" / "faiss"
     index_path, meta_path = _paths(base_dir, video_id)
 
@@ -130,12 +160,18 @@ def build_index(
 
 
 def has_index(video_id: str, base_dir: Optional[Path] = None) -> bool:
+    """Return True if both index and metadata files exist for a video."""
     base_dir = base_dir or Path(__file__).resolve().parents[3] / "backend_data" / "faiss"
     index_path, meta_path = _paths(base_dir, video_id)
     return index_path.exists() and meta_path.exists()
 
 
 def retrieve(video_id: str, query: str, top_k: int = 5, base_dir: Optional[Path] = None) -> List[Dict[str, object]]:
+    """Semantic retrieve top-k chunks for a query.
+
+    Returns list of dicts with `text`, `score`, `chunk_index`, and optional
+    `start_sec`/`end_sec` when timing is available in metadata.
+    """
     base_dir = base_dir or Path(__file__).resolve().parents[3] / "backend_data" / "faiss"
     index_path, meta_path = _paths(base_dir, video_id)
     if not index_path.exists() or not meta_path.exists():
