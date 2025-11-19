@@ -13,7 +13,7 @@ This module exposes lightweight probes used by load balancers and dev tools:
 """
 
 from fastapi import APIRouter, Request
-from datetime import datetime
+from datetime import datetime, timezone
 
 router = APIRouter()
 
@@ -31,7 +31,7 @@ async def health(request: Request):
     mongo_connected = getattr(request.app.state, "mongo_connected", False)
     mongo_error = getattr(request.app.state, "mongo_error", None)
     details = {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "mongo_connected": mongo_connected,
     }
     if mongo_error:
