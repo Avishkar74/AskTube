@@ -28,6 +28,7 @@ class APISettings(BaseSettings):
     ALLOWED_ORIGINS: str = Field(default="http://localhost:5173")
     # Feature flags
     USE_RAG: bool = Field(default=False)
+    LLM_MODEL: str = Field(default="llama3.2:3b")
 
     # Mongo (supports both names; prefer MONGODB_*; fallback to MONGO_*)
     MONGODB_URI: str | None = Field(default=None)

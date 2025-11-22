@@ -438,6 +438,15 @@ For questions or issues, please open an issue on GitHub or contact [your-email].
 
 Now improved with a FastAPI backend, RAG, and Chat CLI.
 
+## Technical & Product Documentation
+
+For deeper architectural and requirement details:
+
+- **Technical Requirements (TRD)**: See `TRD.md` for system architecture, data flows, RAG design, LLM selection logic, persistence plans, and endpoint specifications.
+- **Product Requirements (PRD)**: See `PRD.md` for user personas, goals, feature scope, milestones, and prioritization.
+
+Both documents are kept up to date with ongoing development; consult them before proposing major changes or new features.
+
 ## Security & Secrets
 
 - Do not commit `.env` files or secrets. They’re already added to `.gitignore` in this repo.

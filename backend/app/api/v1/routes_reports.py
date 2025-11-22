@@ -14,6 +14,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Request, BackgroundTasks, HTTPException
 from fastapi.responses import StreamingResponse
 
+from ...core.logging import logger
 from ...repositories import report_repo
 from ...db.gridfs import get_gridfs_bucket, download_bytes
 from ...schemas.report import ReportIn, ReportOut, ReportMeta
@@ -38,9 +39,13 @@ async def create_process(request: Request, background_tasks: BackgroundTasks, pa
 
     db = request.app.state.db
     if db is None:
+        logger.error("Database not configured during /process request")
         raise HTTPException(status_code=503, detail="Database not configured")
 
+    logger.info(f"Received processing request for URL: {youtube_url} (force_reindex={force_reindex})")
     report_id = await report_repo.insert_report(db, youtube_url)
+    logger.info(f"Created report {report_id}, queuing background task")
+    
     # Lazy import of processing service so that heavy LLM modules are not imported during startup
     from ...services.processing_service import process_report  # noqa: WPS433
     background_tasks.add_task(process_report, request.app, report_id, youtube_url, force_reindex)

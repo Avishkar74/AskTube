@@ -23,7 +23,7 @@ from .rag_store import build_index
 Heavy LLM-related modules are imported lazily inside the function to avoid
 delaying API startup (health/status endpoints should respond quickly).
 """
-from pdf_exporter import EnhancedPDFExporter
+from .pdf_exporter import EnhancedPDFExporter
 
 
 async def process_report(app: FastAPI, report_id: str, youtube_url: str, force_reindex: bool = False) -> None:
@@ -43,14 +43,22 @@ async def process_report(app: FastAPI, report_id: str, youtube_url: str, force_r
     await report_repo.update_status(db, report_id, "running")
 
     try:
+        logger.info(f"Starting processing for report {report_id} (URL: {youtube_url})")
+
         # 1) Extract transcript and basic meta (backend-local)
         video_id = extract_video_id(youtube_url)
+        logger.debug(f"Extracted video_id: {video_id}")
+        
         transcript_text = get_transcript_text(youtube_url)
+        logger.info(f"Transcript fetched for {video_id} (length: {len(transcript_text)} chars)")
+        
         transcript_segments = []
         try:
             transcript_segments = get_transcript_segments(youtube_url)
+            logger.debug(f"Fetched {len(transcript_segments)} transcript segments")
         except Exception as se:
             logger.warning(f"Transcript segments fetch failed: {se}")
+        
         title = None
         await report_repo.set_video_meta(db, report_id, video_id, title)
 
@@ -62,15 +70,22 @@ async def process_report(app: FastAPI, report_id: str, youtube_url: str, force_r
             logger.warning(f"RAG index build failed: {ie}")
 
         # 3) Generate artifacts using existing modules (lazy imports)
-        from summary_generator import summarize_text  # noqa: WPS433
-        from detail_explanation_generator import generate_notes  # noqa: WPS433
-        from mindmap_generator import generate_mindmap  # noqa: WPS433
+        logger.info("Generating learning artifacts...")
+        from .summary_generator import summarize_text  # noqa: WPS433
+        from .detail_explanation_generator import generate_notes  # noqa: WPS433
+        from .mindmap_generator import generate_mindmap  # noqa: WPS433
 
         summary = summarize_text(transcript_text)
+        logger.debug("Summary generated")
+        
         notes = generate_notes(transcript_text)
+        logger.debug("Notes generated")
+        
         mindmap = generate_mindmap(transcript_text)
+        logger.debug("Mind map generated")
 
         # 4) Export to PDF/HTML (HTML fallback stored)
+        logger.info("Exporting to PDF/HTML...")
         exporter = EnhancedPDFExporter()
         output_path = exporter.export_to_pdf(
             video_id=video_id or "unknown",
@@ -81,6 +96,7 @@ async def process_report(app: FastAPI, report_id: str, youtube_url: str, force_r
             mindmap=mindmap,
             transcript=transcript_text,
         )
+        logger.debug(f"Exported to: {output_path}")
 
         # 5) Upload to GridFS
         bucket = get_gridfs_bucket(db)
@@ -92,7 +108,9 @@ async def process_report(app: FastAPI, report_id: str, youtube_url: str, force_r
             filename = Path(output_path).name
         except Exception:
             filename = output_path
+        
         file_id = await upload_bytes(bucket, data, filename=filename, content_type="text/html" if is_html else "application/pdf")
+        logger.info(f"Artifact uploaded to GridFS (id: {file_id}, type: {'html' if is_html else 'pdf'})")
 
         artifacts = {
             "html_file_id": file_id if is_html else None,

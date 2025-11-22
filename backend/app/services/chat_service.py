@@ -49,10 +49,10 @@ async def chat_once(app: FastAPI, payload: ChatRequest) -> Tuple[str, List[Dict[
     # Prefer provided video_id; else derive from URL in ConversationManager usage
     # For simplicity, we'll use video_id as conversation key; if only URL was given, we might extract id in processing.
     vid_key = video_id or (youtube_url or "unknown").split("v=")[-1]
-
+    
     backend = (payload.backend or "").lower()
-    model = payload.model
     settings = get_settings()
+    model = payload.model or settings.LLM_MODEL
     use_rag = payload.use_rag if payload.use_rag is not None else settings.USE_RAG
 
     # Select backend (explicit if provided, else auto)
@@ -60,15 +60,18 @@ async def chat_once(app: FastAPI, payload: ChatRequest) -> Tuple[str, List[Dict[
     try:
         backend_instance = get_backend(selected_backend, model) if selected_backend else auto_select_backend("ollama", model)
         selected_backend = (selected_backend or type(backend_instance).__name__.replace("Backend", "").lower())
+        logger.info(f"Chat using backend: {selected_backend} (model: {model})")
     except Exception as e:
         logger.warning(f"Backend selection failed: {e}")
         backend_instance = None
 
-    # Always fetch transcript for this chat request if youtube_url is provided
+    # Always fetch transcript for this chat request if youtube_url or video_id is provided
     transcript_text = ""
     try:
-        if youtube_url:
-            transcript_text = get_transcript_text(youtube_url)[:15000]
+        target_id_or_url = youtube_url or video_id
+        if target_id_or_url:
+            transcript_text = get_transcript_text(target_id_or_url)[:15000]
+            logger.debug(f"Transcript context length: {len(transcript_text)}")
     except Exception as te:
         logger.warning(f"Transcript fetch failed: {te}")
 
@@ -82,13 +85,17 @@ async def chat_once(app: FastAPI, payload: ChatRequest) -> Tuple[str, List[Dict[
             if ts is not None:
                 w = payload.window if (payload.window is not None and payload.window >= 0) else 1
                 rag_results = retrieve_by_timestamp(vid_key, ts, window=w)
+                logger.info(f"RAG timestamp retrieval: {ts}s (found {len(rag_results)} chunks)")
             else:
                 k = payload.top_k or 6
                 rag_results = retrieve(vid_key, message, top_k=k)
+                logger.info(f"RAG semantic retrieval: found {len(rag_results)} chunks")
             if rag_results:
                 rag_chunks_text = "\n\n".join([f"[c{i+1}] {t['text']}" for i, t in enumerate(rag_results)])
         except Exception as re:
             logger.warning(f"RAG retrieve failed: {re}")
+    else:
+        logger.debug(f"RAG skipped (use_rag={use_rag}, has_index={has_index(vid_key) if vid_key else False})")
 
     # Build prompt grounded on RAG or transcript
     system = (
@@ -106,13 +113,16 @@ async def chat_once(app: FastAPI, payload: ChatRequest) -> Tuple[str, List[Dict[
     answer = None
     if backend_instance is not None:
         try:
+            logger.debug("Sending prompt to LLM...")
             answer = backend_instance.generate(prompt, max_tokens=512, temperature=0.3)
+            logger.debug("LLM response received")
         except Exception as e:
             logger.warning(f"LLM generate failed: {e}")
             answer = None
 
     if not answer:
         # Final fallback
+        logger.warning("Using fallback heuristic answer")
         if transcript_text:
             answer = "Based on the transcript, here are 3 key points:\n- " + "\n- ".join([p for p in message.split()[:3]])
         else:
@@ -139,7 +149,127 @@ async def chat_once(app: FastAPI, payload: ChatRequest) -> Tuple[str, List[Dict[
         "top_k": payload.top_k,
         "window": payload.window,
     }
+    logger.info(f"Chat completed (fallback={meta['fallback']})")
     return answer, citations, meta
+
+
+async def chat_stream(app: FastAPI, payload: ChatRequest):
+    """Stream answer for a user question about a video.
+    
+    Yields JSON strings:
+    - {"type": "meta", "data": {...}} (initial)
+    - {"type": "citation", "data": [...]} (if RAG used)
+    - {"type": "chunk", "data": "word"} (streaming content)
+    - {"type": "done"} (completion)
+    """
+    import json
+    
+    youtube_url = payload.youtube_url
+    video_id = payload.video_id
+    message = payload.message
+
+    if not (youtube_url or video_id):
+        yield json.dumps({"type": "error", "data": "Provide youtube_url or video_id"})
+        return
+
+    vid_key = video_id or (youtube_url or "unknown").split("v=")[-1]
+    backend = (payload.backend or "").lower()
+    settings = get_settings()
+    model = payload.model or settings.LLM_MODEL
+    use_rag = payload.use_rag if payload.use_rag is not None else settings.USE_RAG
+
+    # Select backend
+    selected_backend = backend or None
+    try:
+        backend_instance = get_backend(selected_backend, model) if selected_backend else auto_select_backend("ollama", model)
+        selected_backend = (selected_backend or type(backend_instance).__name__.replace("Backend", "").lower())
+    except Exception as e:
+        logger.warning(f"Backend selection failed: {e}")
+        backend_instance = None
+
+    # Fetch transcript
+    transcript_text = ""
+    try:
+        target_id_or_url = youtube_url or video_id
+        if target_id_or_url:
+            transcript_text = get_transcript_text(target_id_or_url)[:15000]
+    except Exception as te:
+        logger.warning(f"Transcript fetch failed: {te}")
+
+    # RAG Retrieval
+    rag_chunks_text = ""
+    rag_results: List[Dict[str, Any]] = []
+    if use_rag and vid_key and has_index(vid_key):
+        try:
+            ts = _parse_timestamp_seconds(message)
+            if ts is not None:
+                w = payload.window if (payload.window is not None and payload.window >= 0) else 1
+                rag_results = retrieve_by_timestamp(vid_key, ts, window=w)
+            else:
+                k = payload.top_k or 6
+                rag_results = retrieve(vid_key, message, top_k=k)
+            if rag_results:
+                rag_chunks_text = "\n\n".join([f"[c{i+1}] {t['text']}" for i, t in enumerate(rag_results)])
+        except Exception as re:
+            logger.warning(f"RAG retrieve failed: {re}")
+
+    # Send Meta & Citations
+    citations = []
+    if rag_results:
+        for i, item in enumerate(rag_results):
+            citations.append({
+                "chunk_id": f"c{i+1}",
+                "text": item.get("text"),
+                "score": item.get("score"),
+                "chunk_index": item.get("chunk_index"),
+                "start_sec": item.get("start_sec"),
+                "end_sec": item.get("end_sec"),
+            })
+    
+    yield json.dumps({
+        "type": "meta", 
+        "data": {
+            "backend": selected_backend or "auto",
+            "model": model or "default",
+            "use_rag": use_rag,
+            "fallback": backend_instance is None
+        }
+    }) + "\n"
+    
+    if citations:
+        yield json.dumps({"type": "citations", "data": citations}) + "\n"
+
+    # Build Prompt
+    system = (
+        "You are a helpful assistant answering questions about a YouTube video.\n"
+        + ("Answer STRICTLY using the provided context chunks; cite [cN].\n" if rag_chunks_text else "Use the transcript context if available. If not present, say so.\n")
+    )
+    context = ""
+    if rag_chunks_text:
+        context = f"Context Chunks (most relevant first):\n---\n{rag_chunks_text}\n---\n\n"
+    elif transcript_text:
+        context = f"Transcript (truncated):\n---\n{transcript_text}\n---\n\n"
+    prompt = f"{system}{context}User question: {message}\nAnswer:"
+
+    # Stream Generation
+    if backend_instance is not None:
+        try:
+            for chunk in backend_instance.generate_stream(prompt, max_tokens=512, temperature=0.3):
+                yield json.dumps({"type": "chunk", "data": chunk}) + "\n"
+        except Exception as e:
+            logger.warning(f"LLM stream failed: {e}")
+            yield json.dumps({"type": "chunk", "data": " [Error generating response]"}) + "\n"
+    else:
+        # Fallback
+        fallback_text = ""
+        if transcript_text:
+            fallback_text = "Based on the transcript, here are 3 key points:\n- " + "\n- ".join([p for p in message.split()[:3]])
+        else:
+            fallback_text = "I could not access the transcript to answer this question."
+        
+        yield json.dumps({"type": "chunk", "data": fallback_text}) + "\n"
+
+    yield json.dumps({"type": "done"}) + "\n"
 
 
 def _parse_timestamp_seconds(message: str) -> float | None:

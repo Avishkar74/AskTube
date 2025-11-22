@@ -23,6 +23,11 @@ class LLMBackend(ABC):
         pass
 
     @abstractmethod
+    def generate_stream(self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.3):
+        """Yield chunks of generated text."""
+        pass
+
+    @abstractmethod
     def is_available(self) -> bool:
         pass
 
@@ -63,6 +68,18 @@ class OllamaBackend(LLMBackend):
         if isinstance(resp, str):
             return resp
         raise RuntimeError(f"Unexpected Ollama result type: {type(resp)}")
+
+    def generate_stream(self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.3):
+        options = {"temperature": temperature}
+        if max_tokens:
+            options["num_predict"] = max_tokens
+        
+        stream = self.ollama.generate(model=self.model, prompt=prompt, options=options, stream=True)
+        for chunk in stream:
+            if isinstance(chunk, dict):
+                yield chunk.get("response", "")
+            elif hasattr(chunk, "response"):
+                yield getattr(chunk, "response", "")
 
     def is_available(self) -> bool:
         try:
@@ -127,6 +144,17 @@ class GeminiBackend(LLMBackend):
                     continue
                 raise
         raise RuntimeError("Exceeded retry attempts for Gemini")
+
+    def generate_stream(self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.3):
+        llm = self.ChatGoogleGenerativeAI(
+            model=self.model,
+            google_api_key=self.api_key,
+            max_output_tokens=max_tokens or 512,
+            temperature=temperature,
+        )
+        # Note: LangChain's stream method yields chunks
+        for chunk in llm.stream(prompt):
+            yield chunk.content
 
     def is_available(self) -> bool:
         try:

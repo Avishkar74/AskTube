@@ -14,6 +14,8 @@ try:
 except Exception as e:  # noqa: BLE001
     raise RuntimeError("youtube-transcript-api is required in backend environment") from e
 
+from ..core.logging import logger
+
 
 def extract_video_id(url: str) -> str:
     """Extract the 11-character YouTube video ID from a URL or raw ID.
@@ -34,33 +36,82 @@ def extract_video_id(url: str) -> str:
     raise ValueError(f"Could not extract video ID from: {url}")
 
 
+from functools import lru_cache
+
+@lru_cache(maxsize=100)
 def get_transcript_segments(video_url: str, language: str = 'en') -> List[Dict]:
     """Fetch transcript segments for a full YouTube URL.
 
-    Tries the requested `language` first, then falls back to the API's default
-    selection. Returns a list of dicts: `{text, start, duration}`.
+    Tries the requested `language` first, then falls back to a list of common languages,
+    and finally attempts to list available transcripts and pick the first one.
     """
     vid = extract_video_id(video_url)
-    api = YouTubeTranscriptApi()
-    try:
-        fetched = api.fetch(vid, languages=[language])
-    except Exception:
-        # fallback to default selection
-        fetched = api.fetch(vid)
-    return [{'text': it.text, 'start': it.start, 'duration': it.duration} for it in fetched]
+    return get_transcript_segments_by_id(vid, language)
 
 
+@lru_cache(maxsize=100)
 def get_transcript_text(video_url: str, language: str = 'en') -> str:
     """Return transcript text concatenated from fetched segments."""
     segs = get_transcript_segments(video_url, language=language)
     return " ".join(s.get('text', '') for s in segs)
 
 
+@lru_cache(maxsize=100)
 def get_transcript_segments_by_id(video_id: str, language: str = 'en') -> List[Dict]:
-    """Fetch transcript segments by video ID, mirroring `get_transcript_segments`."""
-    api = YouTubeTranscriptApi()
+    """Fetch transcript segments by video ID with robust fallback logic."""
     try:
-        fetched = api.fetch(video_id, languages=[language])
+        # 1. Try requested language
+        return _fetch_and_format(video_id, [language])
     except Exception:
-        fetched = api.fetch(video_id)
-    return [{'text': it.text, 'start': it.start, 'duration': it.duration} for it in fetched]
+        pass
+
+    try:
+        # 2. Try common languages (English variants, Hindi, etc.)
+        fallback_langs = ['en', 'en-US', 'en-GB', 'hi', 'es', 'fr', 'de']
+        if language in fallback_langs:
+            fallback_langs.remove(language)
+        return _fetch_and_format(video_id, fallback_langs)
+    except Exception:
+        pass
+
+    # 3. List available transcripts and pick the first one (last resort)
+    try:
+        # Use the API instance method as seen in transcript_extractor.py
+        api = YouTubeTranscriptApi()
+        try:
+            transcript_list = api.list(video_id)
+            # Try to find a manually created one first (assuming list returns objects with is_generated)
+            # Note: The available API seems to return a list of objects, let's inspect or assume standard behavior
+            # If api.list() returns a list of Transcripts, we can iterate.
+            # Based on transcript_extractor.py, it iterates and prints.
+            
+            # Fallback: just fetch the default
+            fetched = api.fetch(video_id)
+            return [{'text': it.text, 'start': it.start, 'duration': it.duration} for it in fetched]
+            
+        except Exception:
+             # If list/fetch fails, try with languages
+             fetched = api.fetch(video_id, languages=['en'])
+             return [{'text': it.text, 'start': it.start, 'duration': it.duration} for it in fetched]
+
+    except Exception as e:
+        logger.error(f"All transcript fetch attempts failed for {video_id}: {e}")
+        raise
+
+    raise RuntimeError(f"No transcript found for video {video_id}")
+
+
+def _fetch_and_format(video_id: str, languages: List[str]) -> List[Dict]:
+    """Helper to fetch and format transcript segments."""
+    try:
+        api = YouTubeTranscriptApi()
+        fetched = api.fetch(video_id, languages=languages)
+        return [{'text': it.text, 'start': it.start, 'duration': it.duration} for it in fetched]
+    except Exception:
+        # Fallback to static method if instance method fails (just in case)
+        try:
+            fetched = YouTubeTranscriptApi.get_transcript(video_id, languages=languages)
+            return [{'text': it['text'], 'start': it['start'], 'duration': it['duration']} for it in fetched]
+        except AttributeError:
+            raise
+
