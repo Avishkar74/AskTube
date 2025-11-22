@@ -29,6 +29,7 @@ class APISettings(BaseSettings):
     # Feature flags
     USE_RAG: bool = Field(default=False)
     LLM_MODEL: str = Field(default="llama3.2:3b")
+    LLM_TEMPERATURE: float = Field(default=0.7)
 
     # Mongo (supports both names; prefer MONGODB_*; fallback to MONGO_*)
     MONGODB_URI: str | None = Field(default=None)

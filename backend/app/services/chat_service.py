@@ -99,7 +99,9 @@ async def chat_once(app: FastAPI, payload: ChatRequest) -> Tuple[str, List[Dict[
 
     # Build prompt grounded on RAG or transcript
     system = (
-        "You are a helpful assistant answering questions about a YouTube video.\n"
+        "You are a friendly, casual assistant. Speak in natural 'Hinglish' (Hindi written in English).\n"
+        "Use everyday language like 'kaise ho', 'video mein ye bataya hai', 'bahut interesting hai'.\n"
+        "Avoid street slang or 'Tapori' language. Keep it polite but conversational.\n"
         + ("Answer STRICTLY using the provided context chunks; cite [cN].\n" if rag_chunks_text else "Use the transcript context if available. If not present, say so.\n")
     )
     context = ""
@@ -114,7 +116,7 @@ async def chat_once(app: FastAPI, payload: ChatRequest) -> Tuple[str, List[Dict[
     if backend_instance is not None:
         try:
             logger.debug("Sending prompt to LLM...")
-            answer = backend_instance.generate(prompt, max_tokens=512, temperature=0.3)
+            answer = backend_instance.generate(prompt, max_tokens=512, temperature=settings.LLM_TEMPERATURE)
             logger.debug("LLM response received")
         except Exception as e:
             logger.warning(f"LLM generate failed: {e}")
@@ -241,7 +243,9 @@ async def chat_stream(app: FastAPI, payload: ChatRequest):
 
     # Build Prompt
     system = (
-        "You are a helpful assistant answering questions about a YouTube video.\n"
+        "You are a friendly, casual assistant. Speak in natural 'Hinglish' (Hindi written in English).\n"
+        "Use everyday language like 'kaise ho', 'video mein ye bataya hai', 'bahut interesting hai'.\n"
+        "Avoid street slang or 'Tapori' language. Keep it polite but conversational.\n"
         + ("Answer STRICTLY using the provided context chunks; cite [cN].\n" if rag_chunks_text else "Use the transcript context if available. If not present, say so.\n")
     )
     context = ""
@@ -254,7 +258,7 @@ async def chat_stream(app: FastAPI, payload: ChatRequest):
     # Stream Generation
     if backend_instance is not None:
         try:
-            for chunk in backend_instance.generate_stream(prompt, max_tokens=512, temperature=0.3):
+            for chunk in backend_instance.generate_stream(prompt, max_tokens=512, temperature=settings.LLM_TEMPERATURE):
                 yield json.dumps({"type": "chunk", "data": chunk}) + "\n"
         except Exception as e:
             logger.warning(f"LLM stream failed: {e}")
