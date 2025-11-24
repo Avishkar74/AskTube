@@ -11,9 +11,26 @@ from fastapi import APIRouter, Request, HTTPException
 
 from ...core.logging import logger
 from ...schemas.chat import ChatRequest, ChatResponse
-from ...services.chat_service import chat_once
+from typing import List
+from ...schemas.chat_history import ChatMessage
+from ...services.chat_service import chat_once, chat_stream, get_chat_history
 
 router = APIRouter()
+
+
+@router.get(
+    "/chat/{video_id}/history",
+    response_model=List[ChatMessage],
+    summary="Get chat history",
+    description="Retrieve the chat history for a specific video.",
+)
+async def get_history_endpoint(request: Request, video_id: str):
+    """Retrieve chat history for a video."""
+    try:
+        return await get_chat_history(request.app, video_id)
+    except Exception as e:
+        logger.error(f"Failed to fetch chat history: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch chat history")
 
 
 @router.post(
@@ -44,7 +61,6 @@ async def chat_endpoint(request: Request, payload: ChatRequest):
 async def chat_stream_endpoint(request: Request, payload: ChatRequest):
     """Handle a streaming chat request."""
     from fastapi.responses import StreamingResponse
-    from ...services.chat_service import chat_stream
     
     return StreamingResponse(
         chat_stream(request.app, payload), 

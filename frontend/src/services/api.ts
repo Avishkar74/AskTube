@@ -1,4 +1,4 @@
-    import axios from 'axios';
+import axios from 'axios';
 import type { ChatRequest, ChatResponse, TranscriptSegment } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
@@ -53,6 +53,11 @@ export const getTranscript = async (videoId: string): Promise<TranscriptSegment[
 
 export const chatWithVideo = async (request: ChatRequest): Promise<ChatResponse> => {
     const response = await api.post('/chat', request);
+    return response.data;
+};
+
+export const getChatHistory = async (videoId: string): Promise<any[]> => {
+    const response = await api.get(`/chat/${videoId}/history`);
     return response.data;
 };
 

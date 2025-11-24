@@ -19,11 +19,15 @@ from typing import Tuple, List, Dict, Any
 from fastapi import FastAPI, HTTPException
 
 from ..schemas.chat import ChatRequest
+from ..schemas.chat_history import ChatMessage
+from ..repositories.chat_repository import save_message, get_history
 from ..core.logging import logger
 from ..core.config import get_settings
 from .llm_backend import auto_select_backend, get_backend
 from .transcript_service import get_transcript_text, extract_video_id
 from .rag_store import retrieve, has_index, retrieve_by_timestamp
+from ..db.mongo import get_db
+import time
 
 
 async def chat_once(app: FastAPI, payload: ChatRequest) -> Tuple[str, List[Dict[str, Any]] | None, Dict[str, Any]]:
@@ -49,6 +53,17 @@ async def chat_once(app: FastAPI, payload: ChatRequest) -> Tuple[str, List[Dict[
     # Prefer provided video_id; else derive from URL in ConversationManager usage
     # For simplicity, we'll use video_id as conversation key; if only URL was given, we might extract id in processing.
     vid_key = video_id or (youtube_url or "unknown").split("v=")[-1]
+    
+    # Save User Message
+    db = get_db(app)
+    if db is not None:
+        user_msg = ChatMessage(
+            id=str(time.time()),
+            role="user",
+            content=message,
+            timestamp=time.time()
+        )
+        await save_message(db, vid_key, user_msg)
     
     backend = (payload.backend or "").lower()
     settings = get_settings()
@@ -151,8 +166,28 @@ async def chat_once(app: FastAPI, payload: ChatRequest) -> Tuple[str, List[Dict[
         "top_k": payload.top_k,
         "window": payload.window,
     }
+    
+    # Save AI Message
+    if db is not None:
+        ai_msg = ChatMessage(
+            id=str(time.time() + 0.1),
+            role="ai",
+            content=answer,
+            timestamp=time.time(),
+            citations=citations
+        )
+        await save_message(db, vid_key, ai_msg)
+
     logger.info(f"Chat completed (fallback={meta['fallback']})")
     return answer, citations, meta
+
+
+async def get_chat_history(app: FastAPI, video_id: str) -> List[ChatMessage]:
+    """Retrieve chat history for a video."""
+    db = get_db(app)
+    if db is None:
+        return []
+    return await get_history(db, video_id)
 
 
 async def chat_stream(app: FastAPI, payload: ChatRequest):

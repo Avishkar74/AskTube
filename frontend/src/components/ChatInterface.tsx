@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { User, Bot, MessageSquare, Plus, Mic, AudioLines, MicOff, Send } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { chatWithVideo } from '../services/api';
+import { chatWithVideo, getChatHistory } from '../services/api';
 import type { ChatResponse, Citation } from '../types';
 
 interface ChatInterfaceProps {
@@ -37,6 +37,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ videoId, currentTime, onT
     useEffect(() => {
         scrollToBottom();
     }, [messages]);
+
+    // Fetch Chat History
+    useEffect(() => {
+        if (!videoId) return;
+
+        const fetchHistory = async () => {
+            try {
+                const history = await getChatHistory(videoId);
+                if (history && history.length > 0) {
+                    setMessages(history);
+                } else {
+                    setMessages([]);
+                }
+            } catch (error) {
+                console.error("Failed to load chat history:", error);
+            }
+        };
+        fetchHistory();
+    }, [videoId]);
 
     const handleSend = async (textOverride?: string) => {
         const text = typeof textOverride === 'string' ? textOverride : input;
