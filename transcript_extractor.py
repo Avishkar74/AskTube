@@ -143,8 +143,8 @@ def save_transcript(transcript: List[Dict], video_id: str, output_dir: str = "ou
 def main():
     """Main execution."""
     # Configuration
-    video_url = "https://youtu.be/GuyZspG3-Po?si=H77-pzq19Bgr8EEd"
-    output_dir = "outputs"
+    video_url = "https://youtu.be/7nonQ2dYgiE?si=HbY7QL052sTngMSF"
+    output_dir = "outputs/SpringBoot"
     
     print("=" * 60)
     print("YouTube Transcript Extractor")

@@ -23,10 +23,11 @@ def _oid(id_str: str) -> ObjectId:
     return ObjectId(id_str)
 
 
-async def insert_report(db: Any, youtube_url: str) -> str:
+async def insert_report(db: Any, youtube_url: str, video_id: Optional[str] = None) -> str:
     """Insert a new report document and return its stringified ObjectId."""
     doc = {
         "youtube_url": youtube_url,
+        "video_id": video_id,
         "status": "queued",
         "created_at": _ts(),
         "updated_at": _ts(),

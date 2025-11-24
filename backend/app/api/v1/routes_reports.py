@@ -43,8 +43,16 @@ async def create_process(request: Request, background_tasks: BackgroundTasks, pa
         raise HTTPException(status_code=503, detail="Database not configured")
 
     logger.info(f"Received processing request for URL: {youtube_url} (force_reindex={force_reindex})")
-    report_id = await report_repo.insert_report(db, youtube_url)
-    logger.info(f"Created report {report_id}, queuing background task")
+    
+    # Extract video_id immediately for early validation and UI responsiveness
+    from ...services.transcript_service import extract_video_id
+    try:
+        video_id = extract_video_id(youtube_url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    report_id = await report_repo.insert_report(db, youtube_url, video_id=video_id)
+    logger.info(f"Created report {report_id} for video {video_id}, queuing background task")
     
     # Lazy import of processing service so that heavy LLM modules are not imported during startup
     from ...services.processing_service import process_report  # noqa: WPS433

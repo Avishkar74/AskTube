@@ -36,9 +36,6 @@ def extract_video_id(url: str) -> str:
     raise ValueError(f"Could not extract video ID from: {url}")
 
 
-from functools import lru_cache
-
-@lru_cache(maxsize=100)
 def get_transcript_segments(video_url: str, language: str = 'en') -> List[Dict]:
     """Fetch transcript segments for a full YouTube URL.
 
@@ -49,14 +46,12 @@ def get_transcript_segments(video_url: str, language: str = 'en') -> List[Dict]:
     return get_transcript_segments_by_id(vid, language)
 
 
-@lru_cache(maxsize=100)
 def get_transcript_text(video_url: str, language: str = 'en') -> str:
     """Return transcript text concatenated from fetched segments."""
     segs = get_transcript_segments(video_url, language=language)
     return " ".join(s.get('text', '') for s in segs)
 
 
-@lru_cache(maxsize=100)
 def get_transcript_segments_by_id(video_id: str, language: str = 'en') -> List[Dict]:
     """Fetch transcript segments by video ID with robust fallback logic."""
     try:

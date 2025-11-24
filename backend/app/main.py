@@ -10,6 +10,8 @@ and configures:
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import os
 
 from .core.config import get_settings
 from .db.mongo import init_mongo, close_mongo
@@ -17,6 +19,8 @@ from .api.v1.routes_health import router as health_router
 from .api.v1.routes_reports import router as reports_router
 from .api.v1.routes_chat import router as chat_router
 from .api.v1.routes_config import router as config_router
+from .api.v1.routes_notes import router as notes_router
+from .api.v1.routes_courses import router as courses_router
 from .middleware.request_logging import RequestLoggingMiddleware
 
 
@@ -65,9 +69,14 @@ def create_app() -> FastAPI:
     app.include_router(reports_router, prefix=f"{settings.API_PREFIX}/v1", tags=["reports"]) 
     app.include_router(chat_router, prefix=f"{settings.API_PREFIX}/v1", tags=["chat"]) 
     app.include_router(config_router, prefix=f"{settings.API_PREFIX}/v1", tags=["config"]) 
+    app.include_router(notes_router, prefix=f"{settings.API_PREFIX}/v1", tags=["notes"])
+    app.include_router(courses_router, prefix=f"{settings.API_PREFIX}/v1", tags=["courses"])
+
+    # Mount static directory for uploads
+    os.makedirs("data/uploads", exist_ok=True)
+    app.mount("/static/uploads", StaticFiles(directory="data/uploads"), name="uploads") 
 
     return app
 
 
 app = create_app()
-# trigger reload

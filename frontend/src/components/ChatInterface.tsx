@@ -1,52 +1,32 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, User, Bot, MessageSquare, Play, Mic, MicOff, Volume2, VolumeX, Settings } from 'lucide-react';
+import { User, Bot, MessageSquare, Plus, Mic, AudioLines, MicOff, Send } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import type { Citation } from '../types';
+import { chatWithVideo } from '../services/api';
+import type { ChatResponse, Citation } from '../types';
 
 interface ChatInterfaceProps {
-    messages: Message[];
-    onSendMessage: (message: string) => Promise<void>;
-    isLoading: boolean;
+    videoId: string;
+    currentTime: number;
     onTimestampClick: (timestamp: number) => void;
 }
 
-export interface Message {
+interface Message {
+    id?: string;
     role: 'user' | 'ai';
     content: string;
     citations?: Citation[];
+    timestamp?: number;
 }
 
-// Add types for Web Speech API
-declare global {
-    interface Window {
-        SpeechRecognition: any;
-        webkitSpeechRecognition: any;
-    }
-}
-
-const ChatInterface: React.FC<ChatInterfaceProps> = ({
-    messages,
-    onSendMessage,
-    isLoading,
-    onTimestampClick
-}) => {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ videoId, currentTime, onTimestampClick }) => {
+    const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
     const [isListening, setIsListening] = useState(false);
-    const [isSpeaking, setIsSpeaking] = useState(false);
-    const [autoSpeak, setAutoSpeak] = useState(true);
-    const [lang, setLang] = useState<'en-US' | 'hi-IN'>('en-US');
-    const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
-    const [selectedVoice, setSelectedVoice] = useState<SpeechSynthesisVoice | null>(null);
-    const [rate, setRate] = useState(1.0);
-    const [showSettings, setShowSettings] = useState(false);
-
+    const [voiceMode, setVoiceMode] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const recognitionRef = useRef<any>(null);
-    const synth = window.speechSynthesis;
-
-    // Streaming TTS Refs
-    const lastSpokenLengthRef = useRef(0);
-    const currentMessageRef = useRef('');
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -56,45 +36,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         scrollToBottom();
     }, [messages]);
 
-    // Load voices
-    useEffect(() => {
-        const loadVoices = () => {
-            const voices = synth.getVoices();
-            setAvailableVoices(voices);
-        };
-
-        loadVoices();
-        if (synth.onvoiceschanged !== undefined) {
-            synth.onvoiceschanged = loadVoices;
-        }
-    }, []);
-
-    // Update selected voice when lang changes or voices load
-    useEffect(() => {
-        if (availableVoices.length > 0) {
-            const voicesForLang = availableVoices.filter(v => v.lang === lang);
-            // Default to Google or first available
-            const defaultVoice = voicesForLang.find(v => v.name.includes('Google')) || voicesForLang[0];
-            setSelectedVoice(defaultVoice || null);
-        }
-    }, [lang, availableVoices]);
-
     // Initialize Speech Recognition
     useEffect(() => {
-        if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
             recognitionRef.current = new SpeechRecognition();
             recognitionRef.current.continuous = false;
             recognitionRef.current.interimResults = false;
-            recognitionRef.current.lang = lang; // Dynamic language
 
             recognitionRef.current.onresult = (event: any) => {
                 const transcript = event.results[0][0].transcript;
-                setInput(transcript);
-                handleSendMessage(transcript);
-            };
-
-            recognitionRef.current.onend = () => {
+                setInput((prev) => prev + (prev ? ' ' : '') + transcript);
                 setIsListening(false);
             };
 
@@ -102,308 +54,200 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 console.error('Speech recognition error', event.error);
                 setIsListening(false);
             };
+
+            recognitionRef.current.onend = () => {
+                setIsListening(false);
+            };
         }
-    }, [lang]); // Re-init on lang change
+    }, []);
 
-    const speak = (text: string) => {
-        // Do NOT cancel here, as we want to queue sentences during streaming.
-
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = lang;
-        utterance.rate = rate;
-
-        if (selectedVoice) {
-            utterance.voice = selectedVoice;
-        }
-
-        utterance.onstart = () => setIsSpeaking(true);
-        utterance.onend = () => {
-            // Only set to false if queue is empty
-            if (!synth.pending) {
-                setIsSpeaking(false);
-            }
-        };
-
-        synth.speak(utterance);
-    };
-
-    const stopSpeaking = () => {
-        synth.cancel();
-        setIsSpeaking(false);
-    };
-
-    // Streaming TTS Logic
+    // Handle Voice Mode (TTS)
     useEffect(() => {
-        if (!autoSpeak) return;
-
-        const lastMsg = messages[messages.length - 1];
-        if (!lastMsg || lastMsg.role !== 'ai') {
-            lastSpokenLengthRef.current = 0;
-            currentMessageRef.current = '';
-            return;
-        }
-
-        const fullText = lastMsg.content;
-        const newText = fullText.slice(lastSpokenLengthRef.current);
-
-        // If we have new text
-        if (newText.length > 0) {
-            // Look for sentence boundaries
-            const sentenceMatch = newText.match(/([.?!।\n]+)\s/);
-
-            if (sentenceMatch && sentenceMatch.index !== undefined) {
-                const endIdx = sentenceMatch.index + sentenceMatch[0].length;
-                const sentenceToSpeak = newText.slice(0, endIdx).trim();
-
-                if (sentenceToSpeak) {
-                    speak(sentenceToSpeak);
-                    lastSpokenLengthRef.current += endIdx;
-                }
+        if (voiceMode && messages.length > 0) {
+            const lastMessage = messages[messages.length - 1];
+            if (lastMessage.role === 'ai' && !isLoading) {
+                speakText(lastMessage.content);
             }
         }
+    }, [messages, voiceMode, isLoading]);
 
-        // If loading finished, speak the remainder
-        if (!isLoading && lastSpokenLengthRef.current < fullText.length) {
-            const remainder = fullText.slice(lastSpokenLengthRef.current).trim();
-            if (remainder) {
-                speak(remainder);
-                lastSpokenLengthRef.current = fullText.length;
-            }
-        }
+    const speakText = (text: string) => {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        window.speechSynthesis.speak(utterance);
+    };
 
-    }, [messages, isLoading, autoSpeak, lang, selectedVoice, rate]);
-
-    const startListening = () => {
-        stopSpeaking(); // Stop AI speech when user wants to talk
-        if (recognitionRef.current) {
-            try {
-                recognitionRef.current.lang = lang; // Ensure correct lang
-                recognitionRef.current.start();
-                setIsListening(true);
-            } catch (e) {
-                console.error(e);
-            }
+    const toggleListening = () => {
+        if (isListening) {
+            recognitionRef.current?.stop();
         } else {
-            alert("Speech recognition not supported in this browser.");
+            recognitionRef.current?.start();
+            setIsListening(true);
         }
     };
 
-    const stopListening = () => {
-        if (recognitionRef.current) {
-            recognitionRef.current.stop();
-            setIsListening(false);
+    const toggleVoiceMode = () => {
+        setVoiceMode(!voiceMode);
+        if (voiceMode) {
+            window.speechSynthesis.cancel();
         }
     };
 
-    const handleSendMessage = async (text: string) => {
-        if (!text.trim()) return;
-        stopSpeaking(); // Stop any ongoing speech when user sends new message
+    const handleNewChat = () => {
+        setMessages([]);
         setInput('');
-        await onSendMessage(text);
+        window.speechSynthesis.cancel();
     };
 
-    const handleSubmit = async () => {
+    const handleSend = async () => {
         if (!input.trim()) return;
-        const msg = input;
-        setInput('');
-        await onSendMessage(msg);
-    };
 
-    const formatTime = (seconds: number) => {
-        const date = new Date(seconds * 1000);
-        return date.toISOString().substr(14, 5);
+        const userMessage: Message = {
+            id: Date.now().toString(),
+            role: 'user',
+            content: input,
+            timestamp: currentTime
+        };
+        setMessages((prev) => [...prev, userMessage]);
+        setInput('');
+        setIsLoading(true);
+        window.speechSynthesis.cancel();
+
+        try {
+            console.log('[ChatInterface] Sending message:', input);
+            const response: ChatResponse = await chatWithVideo({
+                video_id: videoId,
+                message: input,
+                use_rag: true,
+            });
+            console.log('[ChatInterface] Received response:', response);
+
+            const aiMessage: Message = {
+                id: (Date.now() + 1).toString(),
+                role: 'ai',
+                content: response.answer,
+                citations: response.citations,
+            };
+            setMessages((prev) => [...prev, aiMessage]);
+        } catch (error) {
+            console.error('[ChatInterface] Chat error:', error);
+            const errorMessage: Message = {
+                id: (Date.now() + 1).toString(),
+                role: 'ai',
+                content: 'Sorry, I encountered an error processing your request.'
+            };
+            setMessages((prev) => [...prev, errorMessage]);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
-        <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900/50">
-            {/* Toolbar */}
-            <div className="px-4 py-2 flex flex-col gap-2 border-b border-slate-200 dark:border-slate-700">
-                <div className="flex justify-between items-center">
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => setLang('en-US')}
-                            className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${lang === 'en-US'
-                                ? 'bg-indigo-600 text-white'
-                                : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-300 dark:hover:bg-slate-700'}`}
-                        >
-                            English
-                        </button>
-                        <button
-                            onClick={() => setLang('hi-IN')}
-                            className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${lang === 'hi-IN'
-                                ? 'bg-indigo-600 text-white'
-                                : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-300 dark:hover:bg-slate-700'}`}
-                        >
-                            हिंदी (Hindi)
-                        </button>
-                    </div>
-
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => setShowSettings(!showSettings)}
-                            className={`p-2 rounded-full transition-colors ${showSettings ? 'bg-slate-200 dark:bg-slate-700 text-indigo-600' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-                            title="Voice Settings"
-                        >
-                            <Settings size={18} />
-                        </button>
-                        <button
-                            onClick={() => {
-                                if (isSpeaking) stopSpeaking();
-                                setAutoSpeak(!autoSpeak);
-                            }}
-                            className={`p-2 rounded-full transition-colors ${autoSpeak ? 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-                            title={autoSpeak ? "Auto-speak ON" : "Auto-speak OFF"}
-                        >
-                            {autoSpeak ? <Volume2 size={18} /> : <VolumeX size={18} />}
-                        </button>
-                    </div>
-                </div>
-
-                {/* Settings Panel */}
-                {showSettings && (
-                    <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl text-xs space-y-3 animate-in slide-in-from-top-2">
-                        <div className="space-y-1">
-                            <label className="block text-slate-500 dark:text-slate-400 font-medium">Voice</label>
-                            <select
-                                value={selectedVoice?.name || ''}
-                                onChange={(e) => {
-                                    const voice = availableVoices.find(v => v.name === e.target.value);
-                                    setSelectedVoice(voice || null);
-                                }}
-                                className="w-full p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-indigo-500/50"
-                            >
-                                {availableVoices.filter(v => v.lang === lang).map(v => (
-                                    <option key={v.name} value={v.name}>
-                                        {v.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="space-y-1">
-                            <label className="block text-slate-500 dark:text-slate-400 font-medium">
-                                Speed: {rate}x
-                            </label>
-                            <input
-                                type="range"
-                                min="0.5"
-                                max="2"
-                                step="0.1"
-                                value={rate}
-                                onChange={(e) => setRate(parseFloat(e.target.value))}
-                                className="w-full accent-indigo-600"
-                            />
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600">
+        <div className="flex flex-col h-full" style={{ backgroundColor: '#44444E' }}>
+            <div className="flex-1 overflow-y-auto p-4 space-y-6 no-scrollbar">
                 {messages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-4 opacity-60">
-                        <div className="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 rounded-2xl flex items-center justify-center">
-                            <MessageSquare size={32} className="text-indigo-500" />
-                        </div>
-                        <p className="text-sm font-medium">Ask a question about the video!</p>
+                    <div className="flex flex-col items-center justify-center h-full space-y-4 opacity-50" style={{ color: '#715A5A' }}>
+                        <MessageSquare size={48} strokeWidth={1.5} />
+                        <p className="text-sm font-medium">Start a conversation about this video</p>
                     </div>
                 ) : (
-                    messages.map((msg, idx) => (
+                    messages.map((message) => (
                         <div
-                            key={idx}
-                            className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
+                            key={message.id}
+                            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                         >
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.role === 'user'
-                                ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400'
-                                : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400'
-                                }`}>
-                                {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
-                            </div>
-
-                            <div className={`flex flex-col max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                                <div className={`p-3.5 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === 'user'
-                                    ? 'bg-indigo-600 text-white rounded-tr-none'
-                                    : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-tl-none'
-                                    }`}>
-                                    <div className="prose dark:prose-invert max-w-none text-sm">
+                            <div
+                                className={`max-w-[85%] p-4 rounded-2xl shadow-sm ${message.role === 'user' ? 'rounded-br-sm' : 'border rounded-bl-sm'
+                                    }`}
+                                style={{
+                                    backgroundColor: message.role === 'user' ? '#D3DAD9' : '#37353E',
+                                    color: message.role === 'user' ? '#37353E' : '#D3DAD9',
+                                    borderColor: message.role === 'user' ? 'transparent' : '#715A5A'
+                                }}
+                            >
+                                <div className="flex items-start gap-3">
+                                    <div
+                                        className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center"
+                                        style={{ backgroundColor: '#715A5A' }}
+                                    >
+                                        {message.role === 'user' ? (
+                                            <User size={16} style={{ color: '#D3DAD9' }} />
+                                        ) : (
+                                            <Bot size={16} style={{ color: '#D3DAD9' }} />
+                                        )}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
                                         <ReactMarkdown>
-                                            {msg.content}
+                                            {message.content}
                                         </ReactMarkdown>
                                     </div>
                                 </div>
-
-                                {msg.citations && msg.citations.length > 0 && (
-                                    <div className="mt-2 flex flex-wrap gap-2">
-                                        {msg.citations.map((cit, cIdx) => (
-                                            <button
-                                                key={cIdx}
-                                                onClick={() => onTimestampClick(cit.start_sec)}
-                                                className="flex items-center gap-1 text-xs bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-900/50 text-indigo-600 dark:text-indigo-400 px-2 py-1 rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors shadow-sm"
-                                            >
-                                                <Play size={10} fill="currentColor" />
-                                                {formatTime(cit.start_sec)}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {/* Manual speak button for AI messages */}
-                                {msg.role === 'ai' && (
-                                    <button
-                                        onClick={() => speak(msg.content)}
-                                        className="mt-1 text-slate-400 hover:text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                                        title="Read aloud"
-                                    >
-                                        <Volume2 size={14} />
-                                    </button>
-                                )}
                             </div>
                         </div>
                     ))
                 )}
+                {isLoading && (
+                    <div className="flex justify-start">
+                        <div className="p-4 rounded-2xl rounded-bl-sm flex items-center gap-2 border" style={{ backgroundColor: '#37353E', borderColor: '#715A5A' }}>
+                            <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: '#715A5A', animationDelay: '0ms' }} />
+                            <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: '#715A5A', animationDelay: '150ms' }} />
+                            <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: '#715A5A', animationDelay: '300ms' }} />
+                        </div>
+                    </div>
+                )}
                 <div ref={messagesEndRef} />
             </div>
 
-            <div className="p-4 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
-                <form
-                    onSubmit={(e) => {
-                        e.preventDefault();
-                        handleSubmit();
-                    }}
-                    className="relative flex items-center gap-2"
-                >
-                    <div className="relative flex-1">
+            {/* Input Area */}
+            <div className="border-t p-4" style={{ borderColor: '#37353E', backgroundColor: '#37353E' }}>
+                <div className="flex gap-2">
+                    <button
+                        onClick={handleNewChat}
+                        className="p-2 rounded-lg transition-all hover:opacity-80"
+                        style={{ backgroundColor: '#44444E', color: '#D3DAD9' }}
+                        title="New Chat"
+                    >
+                        <Plus size={20} />
+                    </button>
+                    <div className="flex-1 flex gap-2 p-2 rounded-lg" style={{ backgroundColor: '#44444E' }}>
                         <input
                             type="text"
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
-                            placeholder="Ask something..."
-                            disabled={isLoading || isListening}
-                            className="w-full pl-4 pr-12 py-3 bg-slate-100 dark:bg-slate-900 border-0 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-indigo-500/50 transition-all outline-none"
+                            onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+                            placeholder="Ask about the video..."
+                            className="flex-1 bg-transparent outline-none text-sm"
+                            style={{ color: '#D3DAD9' }}
+                            disabled={isLoading}
                         />
                         <button
-                            type="button"
-                            onClick={isListening ? stopListening : startListening}
-                            className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-all ${isListening
-                                ? 'bg-red-100 text-red-600 animate-pulse'
-                                : 'text-slate-400 hover:text-indigo-600'
-                                }`}
-                            title="Voice input"
+                            onClick={toggleVoiceMode}
+                            className={`p-1.5 rounded transition-all ${voiceMode ? 'opacity-100' : 'opacity-50 hover:opacity-100'}`}
+                            style={{ color: voiceMode ? '#715A5A' : '#D3DAD9' }}
+                            title="Voice Mode"
+                        >
+                            <AudioLines size={18} />
+                        </button>
+                        <button
+                            onClick={toggleListening}
+                            className={`p-1.5 rounded transition-all ${isListening ? 'opacity-100' : 'opacity-50 hover:opacity-100'}`}
+                            style={{ color: isListening ? '#715A5A' : '#D3DAD9' }}
+                            title={isListening ? "Stop Listening" : "Start Listening"}
+                            disabled={isLoading}
                         >
                             {isListening ? <MicOff size={18} /> : <Mic size={18} />}
                         </button>
                     </div>
-
                     <button
-                        type="submit"
-                        disabled={isLoading || !input.trim()}
-                        className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:bg-slate-200 disabled:text-slate-400 transition-all shadow-sm hover:shadow-md"
+                        onClick={handleSend}
+                        disabled={!input.trim() || isLoading}
+                        className="p-2 rounded-lg transition-all disabled:opacity-30 hover:opacity-80"
+                        style={{ backgroundColor: '#715A5A', color: '#D3DAD9' }}
+                        title="Send"
                     >
-                        {isLoading ? (
-                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        ) : (
-                            <Send size={18} />
-                        )}
+                        <Send size={20} />
                     </button>
-                </form>
+                </div>
             </div>
         </div>
     );

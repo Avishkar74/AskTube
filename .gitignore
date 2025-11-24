@@ -44,7 +44,7 @@ env/
 
 # Project specific
 cache/
-outputs/*.json
+outputs/
 outputs/*.txt
 outputs/*.md
 outputs/*.mmd

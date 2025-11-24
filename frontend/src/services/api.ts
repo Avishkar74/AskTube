@@ -56,58 +56,6 @@ export const chatWithVideo = async (request: ChatRequest): Promise<ChatResponse>
     return response.data;
 };
 
-export const chatWithVideoStream = async (
-    request: ChatRequest,
-    onChunk: (chunk: string) => void,
-    onMeta: (meta: any) => void,
-    onCitations: (citations: any[]) => void
-): Promise<void> => {
-    const response = await fetch(`${API_BASE_URL}/chat/stream`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request),
-    });
-
-    if (!response.body) throw new Error('No response body');
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-                const data = JSON.parse(line);
-                switch (data.type) {
-                    case 'meta':
-                        onMeta(data.data);
-                        break;
-                    case 'citations':
-                        onCitations(data.data);
-                        break;
-                    case 'chunk':
-                        onChunk(data.data);
-                        break;
-                    case 'done':
-                        return;
-                }
-            } catch (e) {
-                console.error('Error parsing stream line:', e);
-            }
-        }
-    }
-};
-
 export const getReports = async (limit = 10, offset = 0) => {
     const response = await api.get(`/reports?limit=${limit}&offset=${offset}`);
     return response.data;
@@ -115,6 +63,42 @@ export const getReports = async (limit = 10, offset = 0) => {
 
 export const getReport = async (reportId: string) => {
     const response = await api.get(`/reports/${reportId}`);
+    return response.data;
+};
+
+export const getLocalIp = async () => {
+    const response = await api.get('/notes/ip');
+    return response.data.ip;
+};
+
+export const uploadNote = async (videoId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post(`/notes/${videoId}/upload`, formData, {
+        headers: {
+            'Content-Type': 'multipart/form-data',
+        },
+    });
+    return response.data;
+};
+
+export const getNotes = async (videoId: string) => {
+    const response = await api.get(`/notes/${videoId}`);
+    return response.data;
+};
+
+export const importCourse = async (playlistUrl: string) => {
+    const response = await api.post('/courses', { playlist_url: playlistUrl });
+    return response.data;
+};
+
+export const getCourses = async (limit = 50, offset = 0) => {
+    const response = await api.get(`/courses?limit=${limit}&offset=${offset}`);
+    return response.data;
+};
+
+export const getCourse = async (courseId: string) => {
+    const response = await api.get(`/courses/${courseId}`);
     return response.data;
 };
 

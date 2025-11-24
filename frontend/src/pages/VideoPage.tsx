@@ -1,53 +1,78 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, MessageSquare, FileText, List } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import VideoPlayer from '../components/VideoPlayer';
-import TranscriptView from '../components/TranscriptView';
 import ChatInterface from '../components/ChatInterface';
 import NotesView from '../components/NotesView';
-import { getReport, getTranscript, chatWithVideoStream } from '../services/api';
-import type { TranscriptSegment } from '../types';
+import { getReport } from '../services/api';
 
 const VideoPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
-    const [videoUrl, setVideoUrl] = useState('');
     const [videoId, setVideoId] = useState('');
-    const [segments, setSegments] = useState<TranscriptSegment[]>([]);
     const [currentTime, setCurrentTime] = useState(0);
     const [seekTo, setSeekTo] = useState<number | null>(null);
-    const [activeTab, setActiveTab] = useState<'transcript' | 'chat' | 'notes'>('transcript');
-    const [report, setReport] = useState<any>(null);
+    const [activeTab, setActiveTab] = useState<'chat' | 'notes'>('chat');
+    const [report, setReport] = useState<any>({});
+
+    // Resizable sidebar state
+    const [sidebarWidth, setSidebarWidth] = useState(400);
+    const [isResizing, setIsResizing] = useState(false);
 
     useEffect(() => {
+        const fetchData = async (reportId: string) => {
+            console.log(`[VideoPage] Fetching data for report: ${reportId}`);
+            try {
+                const reportData = await getReport(reportId);
+                console.log('[VideoPage] Report data loaded:', reportData);
+                setReport(reportData);
+
+                // Extract video ID from URL or report
+                const vidId = reportData.video_id || extractVideoId(reportData.youtube_url);
+                console.log(`[VideoPage] Resolved video ID: ${vidId}`);
+                setVideoId(vidId);
+            } catch (error) {
+                console.error('[VideoPage] Error fetching video data:', error);
+            }
+        };
+
         if (id) {
             fetchData(id);
         }
     }, [id]);
 
-    const fetchData = async (reportId: string) => {
-        console.log(`[VideoPage] Fetching data for report: ${reportId}`);
-        try {
-            const reportData = await getReport(reportId);
-            console.log('[VideoPage] Report data loaded:', reportData);
-            setReport(reportData);
-            setVideoUrl(reportData.youtube_url);
+    // Handle resizing
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!isResizing) return;
 
-            // Extract video ID from URL or report
-            const vidId = reportData.video_id || extractVideoId(reportData.youtube_url);
-            console.log(`[VideoPage] Resolved video ID: ${vidId}`);
-            setVideoId(vidId);
+            // Calculate new width based on mouse position from right edge
+            const newWidth = window.innerWidth - e.clientX;
 
-            if (vidId) {
-                const transcriptData = await getTranscript(vidId);
-                console.log(`[VideoPage] Transcript loaded (${transcriptData.length} segments)`);
-                setSegments(transcriptData);
+            // Min width 300px, Max width 50% of screen
+            if (newWidth >= 300 && newWidth <= window.innerWidth * 0.5) {
+                setSidebarWidth(newWidth);
             }
-        } catch (error) {
-            console.error('[VideoPage] Error fetching video data:', error);
+        };
+
+        const handleMouseUp = () => {
+            setIsResizing(false);
+            document.body.style.cursor = 'default';
+        };
+
+        if (isResizing) {
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('mouseup', handleMouseUp);
+            document.body.style.cursor = 'col-resize';
         }
-    };
+
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isResizing]);
 
     const extractVideoId = (url: string) => {
+        if (!url) return '';
         const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
         const match = url.match(regExp);
         return (match && match[2].length === 11) ? match[2] : '';
@@ -63,100 +88,36 @@ const VideoPage: React.FC = () => {
         setTimeout(() => setSeekTo(null), 100);
     };
 
-    const handleDownloadPdf = () => {
+    const handleDownloadPdf = async () => {
         if (id) {
             window.open(`http://localhost:8000/api/v1/reports/${id}/download?type=pdf`, '_blank');
         }
     };
 
-    const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'ai'; content: string; citations?: any[] }[]>([]);
-    const [isChatLoading, setIsChatLoading] = useState(false);
 
-    const handleSendMessage = async (message: string) => {
-        const userMessage = { role: 'user' as const, content: message };
-        setChatMessages((prev) => [...prev, userMessage]);
-        setIsChatLoading(true);
-
-        // Create placeholder for AI message
-        const aiMessagePlaceholder = { role: 'ai' as const, content: '', citations: [] };
-        setChatMessages((prev) => [...prev, aiMessagePlaceholder]);
-
-        try {
-            console.log('[VideoPage] Sending message (stream):', message);
-            let currentContent = '';
-
-            await chatWithVideoStream(
-                {
-                    video_id: videoId,
-                    message: message,
-                    use_rag: true,
-                },
-                (chunk: string) => {
-                    currentContent += chunk;
-                    setChatMessages((prev) => {
-                        const newMessages = [...prev];
-                        const lastMsg = newMessages[newMessages.length - 1];
-                        if (lastMsg.role === 'ai') {
-                            lastMsg.content = currentContent;
-                        }
-                        return newMessages;
-                    });
-                },
-                (meta: any) => {
-                    console.log('[VideoPage] Stream meta:', meta);
-                },
-                (citations: any[]) => {
-                    setChatMessages((prev) => {
-                        const newMessages = [...prev];
-                        const lastMsg = newMessages[newMessages.length - 1];
-                        if (lastMsg.role === 'ai') {
-                            lastMsg.citations = citations;
-                        }
-                        return newMessages;
-                    });
-                }
-            );
-        } catch (error) {
-            console.error('[VideoPage] Chat error:', error);
-            setChatMessages((prev) => {
-                const newMessages = [...prev];
-                const lastMsg = newMessages[newMessages.length - 1];
-                if (lastMsg.role === 'ai') {
-                    lastMsg.content += '\n\n[Error: Failed to generate response]';
-                }
-                return newMessages;
-            });
-        } finally {
-            setIsChatLoading(false);
-        }
-    };
-
-    if (!report) {
-        return <div className="flex justify-center items-center h-screen">Loading...</div>;
+    if (!report || Object.keys(report).length === 0) {
+        return <div className="flex justify-center items-center h-screen bg-zinc-950 text-zinc-400">Loading...</div>;
     }
 
     return (
-        <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-900">
-            {/* Header */}
-            <header className="bg-white dark:bg-slate-800 shadow-sm p-4 flex items-center gap-4 z-10 border-b border-slate-200 dark:border-slate-700">
-                <Link to="/" className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-500 hover:text-indigo-600">
-                    <ArrowLeft size={20} />
+        <div className="flex flex-col h-screen bg-zinc-950 text-zinc-100 font-sans overflow-hidden selection:bg-zinc-800 selection:text-white">
+            {/* Header - Glassmorphism */}
+            <header className="absolute top-0 left-0 right-0 h-16 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/50 flex items-center px-6 gap-4 z-50">
+                <Link to="/" className="p-2 hover:bg-zinc-800/50 rounded-full transition-all text-zinc-400 hover:text-white group">
+                    <ArrowLeft size={20} className="group-hover:-translate-x-0.5 transition-transform" />
                 </Link>
-                <h1 className="text-lg font-bold text-slate-900 dark:text-white truncate flex-1">
-                    {report.title || 'Video Learning Session'}
+                <h1 className="text-xl font-bold tracking-tight text-white/90 uppercase">
+                    AskTube
                 </h1>
-                <div className="flex items-center gap-2">
-                    {/* Placeholder for future actions like 'Share' or 'Settings' */}
-                </div>
             </header>
 
             {/* Main Content */}
-            <div className="flex-1 flex overflow-hidden">
+            <div className="flex-1 flex overflow-hidden pt-16 pb-8 relative">
                 {/* Left Panel: Video */}
-                <div className="flex-1 bg-black flex flex-col justify-center relative">
-                    <div className="w-full h-full">
+                <div className="flex-1 bg-black flex flex-col justify-center relative border-r border-zinc-800/50 p-6 min-w-0">
+                    <div className="w-full h-full border border-zinc-800/50 rounded-xl overflow-hidden shadow-2xl shadow-black/50">
                         <VideoPlayer
-                            url={videoUrl}
+                            videoId={videoId}
                             onProgress={handleProgress}
                             onReady={() => { }}
                             seekTo={seekTo}
@@ -164,63 +125,55 @@ const VideoPage: React.FC = () => {
                     </div>
                 </div>
 
+                {/* Resizer Handle */}
+                <div
+                    className="w-1 hover:w-1.5 -ml-0.5 bg-transparent hover:bg-zinc-700/50 cursor-col-resize transition-all z-40 flex items-center justify-center group"
+                    onMouseDown={() => setIsResizing(true)}
+                >
+                    <div className="h-12 w-0.5 bg-zinc-700/50 group-hover:bg-zinc-400 rounded-full transition-colors" />
+                </div>
+
                 {/* Right Panel: Tabs */}
-                <div className="w-[450px] bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 flex flex-col shadow-xl z-20">
-                    {/* Tab Headers */}
-                    <div className="flex p-2 gap-2 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700">
-                        <button
-                            onClick={() => setActiveTab('transcript')}
-                            className={`flex-1 py-2 px-3 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-all ${activeTab === 'transcript'
-                                ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm ring-1 ring-slate-200 dark:ring-slate-700'
-                                : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-                                }`}
-                        >
-                            <List size={16} />
-                            Transcript
-                        </button>
+                <div
+                    className="bg-zinc-950 flex flex-col z-20 shrink-0"
+                    style={{ width: sidebarWidth }}
+                >
+                    {/* Tab Headers - Minimalist Style */}
+                    <div className="flex border-b border-zinc-800/50 shrink-0 px-4 pt-2 gap-2">
                         <button
                             onClick={() => setActiveTab('chat')}
-                            className={`flex-1 py-2 px-3 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-all ${activeTab === 'chat'
-                                ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm ring-1 ring-slate-200 dark:ring-slate-700'
-                                : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            className={`flex-1 pb-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'chat'
+                                ? 'border-white text-white'
+                                : 'border-transparent text-zinc-500 hover:text-zinc-300'
                                 }`}
                         >
-                            <MessageSquare size={16} />
                             Chat
                         </button>
                         <button
                             onClick={() => setActiveTab('notes')}
-                            className={`flex-1 py-2 px-3 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-all ${activeTab === 'notes'
-                                ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm ring-1 ring-slate-200 dark:ring-slate-700'
-                                : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            className={`flex-1 pb-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'notes'
+                                ? 'border-white text-white'
+                                : 'border-transparent text-zinc-500 hover:text-zinc-300'
                                 }`}
                         >
-                            <FileText size={16} />
-                            Notes
+                            Upload Notes
                         </button>
                     </div>
 
                     {/* Tab Content */}
-                    <div className="flex-1 overflow-hidden relative bg-slate-50/50 dark:bg-slate-900/50">
-                        {activeTab === 'transcript' && (
-                            <TranscriptView
-                                segments={segments}
-                                currentTime={currentTime}
-                                onSegmentClick={handleSeek}
-                            />
-                        )}
+                    <div className="flex-1 overflow-y-auto relative bg-zinc-950 no-scrollbar">
                         {activeTab === 'chat' && (
                             <div className="h-full flex flex-col">
                                 <ChatInterface
-                                    messages={chatMessages}
-                                    onSendMessage={handleSendMessage}
-                                    isLoading={isChatLoading}
+                                    videoId={videoId}
+                                    currentTime={currentTime}
                                     onTimestampClick={handleSeek}
                                 />
                             </div>
                         )}
                         {activeTab === 'notes' && (
                             <NotesView
+                                videoId={videoId}
                                 summary={report.artifacts?.summary || "Summary not available yet."}
                                 notes={report.artifacts?.notes || "Detailed notes not available yet."}
                                 onDownloadPdf={handleDownloadPdf}
@@ -229,6 +182,9 @@ const VideoPage: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Bottom Padding/Bar */}
+            <div className="h-8 bg-zinc-950 border-t border-zinc-800/50 w-full shrink-0" />
         </div>
     );
 };
