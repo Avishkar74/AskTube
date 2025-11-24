@@ -24,6 +24,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ videoId, currentTime, onT
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isListening, setIsListening] = useState(false);
+    const [isSpeaking, setIsSpeaking] = useState(false);
+    const [interimTranscript, setInterimTranscript] = useState('');
     const [voiceMode, setVoiceMode] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const recognitionRef = useRef<any>(null);
@@ -36,88 +38,28 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ videoId, currentTime, onT
         scrollToBottom();
     }, [messages]);
 
-    // Initialize Speech Recognition
-    useEffect(() => {
-        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-            const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-            recognitionRef.current = new SpeechRecognition();
-            recognitionRef.current.continuous = false;
-            recognitionRef.current.interimResults = false;
-
-            recognitionRef.current.onresult = (event: any) => {
-                const transcript = event.results[0][0].transcript;
-                setInput((prev) => prev + (prev ? ' ' : '') + transcript);
-                setIsListening(false);
-            };
-
-            recognitionRef.current.onerror = (event: any) => {
-                console.error('Speech recognition error', event.error);
-                setIsListening(false);
-            };
-
-            recognitionRef.current.onend = () => {
-                setIsListening(false);
-            };
-        }
-    }, []);
-
-    // Handle Voice Mode (TTS)
-    useEffect(() => {
-        if (voiceMode && messages.length > 0) {
-            const lastMessage = messages[messages.length - 1];
-            if (lastMessage.role === 'ai' && !isLoading) {
-                speakText(lastMessage.content);
-            }
-        }
-    }, [messages, voiceMode, isLoading]);
-
-    const speakText = (text: string) => {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        window.speechSynthesis.speak(utterance);
-    };
-
-    const toggleListening = () => {
-        if (isListening) {
-            recognitionRef.current?.stop();
-        } else {
-            recognitionRef.current?.start();
-            setIsListening(true);
-        }
-    };
-
-    const toggleVoiceMode = () => {
-        setVoiceMode(!voiceMode);
-        if (voiceMode) {
-            window.speechSynthesis.cancel();
-        }
-    };
-
-    const handleNewChat = () => {
-        setMessages([]);
-        setInput('');
-        window.speechSynthesis.cancel();
-    };
-
-    const handleSend = async () => {
-        if (!input.trim()) return;
+    const handleSend = async (textOverride?: string) => {
+        const text = typeof textOverride === 'string' ? textOverride : input;
+        if (!text.trim()) return;
 
         const userMessage: Message = {
             id: Date.now().toString(),
             role: 'user',
-            content: input,
+            content: text,
             timestamp: currentTime
         };
         setMessages((prev) => [...prev, userMessage]);
         setInput('');
         setIsLoading(true);
         window.speechSynthesis.cancel();
+        setIsSpeaking(false);
+        // Removed setVoiceMode(false) to allow TTS if mode was active
 
         try {
-            console.log('[ChatInterface] Sending message:', input);
+            console.log('[ChatInterface] Sending message:', text);
             const response: ChatResponse = await chatWithVideo({
                 video_id: videoId,
-                message: input,
+                message: text,
                 use_rag: true,
             });
             console.log('[ChatInterface] Received response:', response);
@@ -141,6 +83,177 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ videoId, currentTime, onT
             setIsLoading(false);
         }
     };
+
+    // Initialize Speech Recognition Instance (Once)
+    useEffect(() => {
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+            recognitionRef.current = new SpeechRecognition();
+            recognitionRef.current.continuous = false;
+            recognitionRef.current.interimResults = true;
+        }
+    }, []);
+
+    // Update Speech Recognition Handlers (On Dependency Change)
+    useEffect(() => {
+        if (!recognitionRef.current) return;
+
+        recognitionRef.current.onresult = (event: any) => {
+            let interim = '';
+            let final = '';
+
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    final += event.results[i][0].transcript;
+                } else {
+                    interim += event.results[i][0].transcript;
+                }
+            }
+
+            if (final) {
+                if (voiceMode) {
+                    // Auto-send in voice mode
+                    // We append final to input just in case user typed something before speaking
+                    const fullText = (input + (input ? ' ' : '') + final).trim();
+                    handleSend(fullText);
+                } else {
+                    // Dictation mode: just update input
+                    setInput((prev) => prev + (prev ? ' ' : '') + final);
+                    setInterimTranscript('');
+                    setIsListening(false);
+                }
+            } else {
+                setInterimTranscript(interim);
+            }
+        };
+
+        recognitionRef.current.onerror = (event: any) => {
+            console.error('Speech recognition error', event.error);
+            setIsListening(false);
+            setInterimTranscript('');
+            // Only disable voice mode on critical errors, or maybe not at all?
+            // setVoiceMode(false); 
+            if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                setVoiceMode(false);
+            }
+        };
+
+        recognitionRef.current.onend = () => {
+            setIsListening(false);
+            setInterimTranscript('');
+        };
+
+    }, [voiceMode, input, handleSend]); // Dependencies ensure handlers have fresh state
+
+    const lastSpokenMessageId = useRef<string | null>(null);
+
+    const startListeningSafe = () => {
+        try {
+            recognitionRef.current?.start();
+            setIsListening(true);
+        } catch (error: any) {
+            console.error("Error starting speech recognition:", error);
+            // If it's already started, ensure state reflects that
+            if (error.name === 'InvalidStateError') {
+                setIsListening(true);
+            }
+        }
+    };
+
+    const stopListeningSafe = () => {
+        try {
+            recognitionRef.current?.stop();
+            setIsListening(false);
+        } catch (error) {
+            console.error("Error stopping speech recognition:", error);
+            setIsListening(false);
+        }
+    };
+
+    // Handle Voice Mode (TTS)
+    useEffect(() => {
+        if (messages.length > 0) {
+            const lastMessage = messages[messages.length - 1];
+            if (lastMessage.role === 'ai' && !isLoading) {
+                if (voiceMode) {
+                    if (lastMessage.id !== lastSpokenMessageId.current) {
+                        speakText(lastMessage.content);
+                    } else if (!isListening && !isSpeaking) {
+                        // Auto-start listening if we enable voice mode but have nothing to say
+                        startListeningSafe();
+                    }
+                }
+                // Mark as seen so we don't speak it later just by toggling voice mode
+                lastSpokenMessageId.current = lastMessage.id || null;
+            }
+        }
+    }, [messages, voiceMode, isLoading, isListening, isSpeaking]);
+
+    const speakText = (text: string) => {
+        window.speechSynthesis.cancel();
+        setIsSpeaking(true);
+        const utterance = new SpeechSynthesisUtterance(text);
+
+        utterance.onend = () => {
+            setIsSpeaking(false);
+            if (voiceMode) {
+                // Small delay to ensure state is clean
+                setTimeout(() => {
+                    if (!isListening) {
+                        startListeningSafe();
+                    }
+                }, 100);
+            }
+        };
+
+        utterance.onerror = () => {
+            setIsSpeaking(false);
+        };
+
+        window.speechSynthesis.speak(utterance);
+    };
+
+    const toggleListening = () => {
+        if (isListening) {
+            stopListeningSafe();
+            // If we are in voice mode and manually stop listening, we should probably exit voice mode too
+            // or just pause? User request implies separation. 
+            // Let's keep it simple: Mic button just controls Mic. 
+            // But if Voice Mode is ON, stopping Mic breaks the loop. 
+            // Let's disable Voice Mode if manually stopped to be safe and avoid auto-restart loops.
+            setVoiceMode(false);
+        } else {
+            startListeningSafe();
+            // setVoiceMode(true); // REMOVED: Mic button does NOT enable Voice Mode anymore
+        }
+    };
+
+    const toggleVoiceMode = () => {
+        const newMode = !voiceMode;
+        setVoiceMode(newMode);
+
+        if (newMode) {
+            // Enabling Voice Mode: Start listening immediately if not already
+            if (!isListening) {
+                startListeningSafe();
+            }
+        } else {
+            // Disabling Voice Mode: Stop listening and cancel speech
+            window.speechSynthesis.cancel();
+            setIsSpeaking(false);
+            if (isListening) {
+                stopListeningSafe();
+            }
+        }
+    };
+
+    const handleNewChat = () => {
+        setMessages([]);
+        setInput('');
+        window.speechSynthesis.cancel();
+    };
+
+    // handleSend is already defined above
 
     return (
         <div className="flex flex-col h-full" style={{ backgroundColor: '#44444E' }}>
@@ -212,10 +325,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ videoId, currentTime, onT
                     <div className="flex-1 flex gap-2 p-2 rounded-lg" style={{ backgroundColor: '#44444E' }}>
                         <input
                             type="text"
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
+                            value={isListening ? input + (input && interimTranscript ? ' ' : '') + interimTranscript : input}
+                            onChange={(e) => {
+                                setInput(e.target.value);
+                                setVoiceMode(false); // Typing disables voice mode
+                            }}
                             onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-                            placeholder="Ask about the video..."
+                            placeholder={isListening ? "Listening..." : "Ask about the video..."}
                             className="flex-1 bg-transparent outline-none text-sm"
                             style={{ color: '#D3DAD9' }}
                             disabled={isLoading}
@@ -224,9 +340,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ videoId, currentTime, onT
                             onClick={toggleVoiceMode}
                             className={`p-1.5 rounded transition-all ${voiceMode ? 'opacity-100' : 'opacity-50 hover:opacity-100'}`}
                             style={{ color: voiceMode ? '#715A5A' : '#D3DAD9' }}
-                            title="Voice Mode"
+                            title="Voice Mode (Auto-enabled by Mic)"
                         >
-                            <AudioLines size={18} />
+                            {isSpeaking ? <AudioLines size={18} className="animate-pulse" /> : <AudioLines size={18} />}
                         </button>
                         <button
                             onClick={toggleListening}
@@ -239,7 +355,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ videoId, currentTime, onT
                         </button>
                     </div>
                     <button
-                        onClick={handleSend}
+                        onClick={() => handleSend()}
                         disabled={!input.trim() || isLoading}
                         className="p-2 rounded-lg transition-all disabled:opacity-30 hover:opacity-80"
                         style={{ backgroundColor: '#715A5A', color: '#D3DAD9' }}
