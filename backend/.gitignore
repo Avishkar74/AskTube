@@ -58,3 +58,5 @@ backend_data/
 backend_data/**
 report_*.html
 *.html
+data/
+data/**
