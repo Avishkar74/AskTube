@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Check, Loader, Menu, X } from 'lucide-react';
-import { getCourse } from '../services/api';
 import VideoPlayer from '../components/VideoPlayer';
 import ChatInterface from '../components/ChatInterface';
 import NotesView from '../components/NotesView';
-import { getReport, getTranscript } from '../services/api';
+import { getCourse, getReport, getTranscript, downloadAiNotesPdf, downloadUploadedNotesPdf } from '../services/api';
 
 interface VideoInCourse {
     video_id: string;
@@ -116,6 +115,30 @@ const CoursePage: React.FC = () => {
     const handleTimestampClick = (timestamp: number) => {
         setSeekTo(timestamp);
         setTimeout(() => setSeekTo(null), 100);
+    };
+
+    const handleDownloadAiNotesPdf = async () => {
+        const currentVideo = course?.videos[currentVideoIndex];
+        if (currentVideo?.report_id) {
+            try {
+                await downloadAiNotesPdf(currentVideo.report_id);
+            } catch (error) {
+                console.error('Failed to download AI notes PDF:', error);
+                alert('Failed to download AI notes PDF. Please try again.');
+            }
+        }
+    };
+
+    const handleDownloadUploadedNotesPdf = async () => {
+        const currentVideo = course?.videos[currentVideoIndex];
+        if (currentVideo?.report_id) {
+            try {
+                await downloadUploadedNotesPdf(currentVideo.report_id);
+            } catch (error) {
+                console.error('Failed to download uploaded notes PDF:', error);
+                alert('This video has no uploaded notes yet.');
+            }
+        }
     };
 
     const formatDuration = (seconds: number) => {
@@ -329,7 +352,8 @@ const CoursePage: React.FC = () => {
                                     videoId={videoId}
                                     summary={report?.summary || 'Summary not available yet.'}
                                     notes={report?.notes || 'Detailed notes not available yet.'}
-                                    onDownloadPdf={() => console.log('Download PDF')}
+                                    onDownloadAiNotesPdf={handleDownloadAiNotesPdf}
+                                    onDownloadUploadedNotesPdf={handleDownloadUploadedNotesPdf}
                                 />
                             )}
                         </div>

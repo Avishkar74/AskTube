@@ -8,13 +8,21 @@ interface NotesViewProps {
     videoId: string;
     summary: string;
     notes: string; // Markdown content
-    onDownloadPdf: () => void;
+    reportStatus?: string; // 'queued', 'running', 'succeeded', 'failed'
+    onDownloadAiNotesPdf: () => void;
+    onDownloadUploadedNotesPdf: () => void;
 }
 
-const NotesView: React.FC<NotesViewProps> = ({ videoId, summary, notes, onDownloadPdf }) => {
+const NotesView: React.FC<NotesViewProps> = ({ videoId, summary, notes, reportStatus = 'unknown', onDownloadAiNotesPdf, onDownloadUploadedNotesPdf }) => {
     const [localIp, setLocalIp] = useState<string>('');
     const [uploadedNotes, setUploadedNotes] = useState<{ filename: string; url: string }[]>([]);
     const [isRefreshing, setIsRefreshing] = useState(false);
+
+    // Check if notes are ready
+    const hasContent = summary && notes && summary.trim().length > 0 && notes.trim().length > 0;
+    const isProcessing = reportStatus === 'queued' || reportStatus === 'running';
+    const hasProcessed = reportStatus === 'succeeded';
+    const hasFailed = reportStatus === 'failed';
 
     useEffect(() => {
         const fetchIp = async () => {
@@ -55,15 +63,71 @@ const NotesView: React.FC<NotesViewProps> = ({ videoId, summary, notes, onDownlo
                 <h2 className="text-2xl font-bold text-white flex items-center gap-2">
                     <FileText className="text-zinc-400" />
                     Study Notes
+                    {isProcessing && (
+                        <span className="text-xs font-normal text-zinc-400 ml-2 flex items-center gap-1">
+                            <RefreshCw size={14} className="animate-spin" />
+                            Generating...
+                        </span>
+                    )}
                 </h2>
-                <button
-                    onClick={onDownloadPdf}
-                    className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-lg hover:bg-zinc-200 transition-colors shadow-sm font-medium"
-                >
-                    <Download size={18} />
-                    Download PDF
-                </button>
+                <div className="flex gap-3">
+                    <button
+                        onClick={onDownloadAiNotesPdf}
+                        disabled={!hasContent || isProcessing}
+                        className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-lg hover:bg-zinc-200 transition-colors shadow-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={
+                            isProcessing
+                                ? "Generating notes... Please wait"
+                                : !hasContent
+                                    ? "No AI notes available yet"
+                                    : "Download AI-generated summary and notes"
+                        }
+                    >
+                        <Download size={18} />
+                        AI Notes (PDF)
+                    </button>
+                    <button
+                        onClick={onDownloadUploadedNotesPdf}
+                        disabled={uploadedNotes.length === 0}
+                        className="flex items-center gap-2 px-4 py-2 bg-zinc-800 text-white rounded-lg hover:bg-zinc-700 transition-colors shadow-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={uploadedNotes.length === 0 ? "No uploaded notes available" : "Download uploaded handwritten notes"}
+                    >
+                        <Download size={18} />
+                        Uploaded Notes (PDF)
+                    </button>
+                </div>
             </div>
+
+            {/* Status Messages */}
+            {isProcessing && (
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 flex items-start gap-3">
+                    <RefreshCw size={20} className="text-blue-400 flex-shrink-0 mt-0.5 animate-spin" />
+                    <div>
+                        <p className="text-blue-400 font-medium">Generating Study Materials</p>
+                        <p className="text-zinc-400 text-sm mt-1">
+                            AI is analyzing the transcript and creating your summary, detailed notes, and mindmap. This usually takes 1-2 minutes.
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {hasFailed && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+                    <p className="text-red-400 font-medium">Processing Failed</p>
+                    <p className="text-zinc-400 text-sm mt-1">
+                        Failed to generate notes. Please try refreshing the page or processing the video again.
+                    </p>
+                </div>
+            )}
+
+            {!hasContent && hasProcessed && (
+                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
+                    <p className="text-yellow-400 font-medium">No Notes Available</p>
+                    <p className="text-zinc-400 text-sm mt-1">
+                        This video doesn't have generated notes yet. Try refreshing the page or reprocessing the video.
+                    </p>
+                </div>
+            )}
 
             {/* QR Code Section */}
             <div className="bg-zinc-900 rounded-xl p-6 border border-zinc-800 flex flex-col md:flex-row items-center gap-6">

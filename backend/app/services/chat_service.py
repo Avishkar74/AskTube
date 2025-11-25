@@ -114,9 +114,9 @@ async def chat_once(app: FastAPI, payload: ChatRequest) -> Tuple[str, List[Dict[
 
     # Build prompt grounded on RAG or transcript
     system = (
-        "You are a friendly, casual assistant. Speak in natural 'Hinglish' (Hindi written in English).\n"
-        "Use everyday language like 'kaise ho', 'video mein ye bataya hai', 'bahut interesting hai'.\n"
-        "Avoid street slang or 'Tapori' language. Keep it polite but conversational.\n"
+        "You are a friendly, casual assistant. Answer in the same language as the user's question (English or Hinglish).\n"
+        "If the user asks in English, answer in English. If they ask in Hinglish (Hindi written in English), answer in Hinglish.\n"
+        "Keep it polite but conversational.\n"
         + ("Answer STRICTLY using the provided context chunks; cite [cN].\n" if rag_chunks_text else "Use the transcript context if available. If not present, say so.\n")
     )
     context = ""
@@ -278,9 +278,9 @@ async def chat_stream(app: FastAPI, payload: ChatRequest):
 
     # Build Prompt
     system = (
-        "You are a friendly, casual assistant. Speak in natural 'Hinglish' (Hindi written in English).\n"
-        "Use everyday language like 'kaise ho', 'video mein ye bataya hai', 'bahut interesting hai'.\n"
-        "Avoid street slang or 'Tapori' language. Keep it polite but conversational.\n"
+        "You are a friendly, casual assistant. Answer in the same language as the user's question (English or Hinglish).\n"
+        "If the user asks in English, answer in English. If they ask in Hinglish (Hindi written in English), answer in Hinglish.\n"
+        "Keep it polite but conversational.\n"
         + ("Answer STRICTLY using the provided context chunks; cite [cN].\n" if rag_chunks_text else "Use the transcript context if available. If not present, say so.\n")
     )
     context = ""

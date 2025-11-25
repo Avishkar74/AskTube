@@ -1,10 +1,11 @@
+// VideoPage.tsx - Updated with proper JSX and reportStatus prop
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Loader } from 'lucide-react';
 import VideoPlayer from '../components/VideoPlayer';
 import ChatInterface from '../components/ChatInterface';
 import NotesView from '../components/NotesView';
-import { getReport } from '../services/api';
+import { getReport, downloadAiNotesPdf, downloadUploadedNotesPdf } from '../services/api';
 
 const VideoPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -18,6 +19,7 @@ const VideoPage: React.FC = () => {
     const [sidebarWidth, setSidebarWidth] = useState(400);
     const [isResizing, setIsResizing] = useState(false);
 
+    // Fetch report data
     useEffect(() => {
         const fetchData = async (reportId: string) => {
             console.log(`[VideoPage] Fetching data for report: ${reportId}`);
@@ -25,8 +27,6 @@ const VideoPage: React.FC = () => {
                 const reportData = await getReport(reportId);
                 console.log('[VideoPage] Report data loaded:', reportData);
                 setReport(reportData);
-
-                // Extract video ID from URL or report
                 const vidId = reportData.video_id || extractVideoId(reportData.youtube_url);
                 console.log(`[VideoPage] Resolved video ID: ${vidId}`);
                 setVideoId(vidId);
@@ -34,37 +34,27 @@ const VideoPage: React.FC = () => {
                 console.error('[VideoPage] Error fetching video data:', error);
             }
         };
-
-        if (id) {
-            fetchData(id);
-        }
+        if (id) fetchData(id);
     }, [id]);
 
-    // Handle resizing
+    // Handle resizing of sidebar
     useEffect(() => {
         const handleMouseMove = (e: MouseEvent) => {
             if (!isResizing) return;
-
-            // Calculate new width based on mouse position from right edge
             const newWidth = window.innerWidth - e.clientX;
-
-            // Min width 300px, Max width 50% of screen
             if (newWidth >= 300 && newWidth <= window.innerWidth * 0.5) {
                 setSidebarWidth(newWidth);
             }
         };
-
         const handleMouseUp = () => {
             setIsResizing(false);
             document.body.style.cursor = 'default';
         };
-
         if (isResizing) {
             window.addEventListener('mousemove', handleMouseMove);
             window.addEventListener('mouseup', handleMouseUp);
             document.body.style.cursor = 'col-resize';
         }
-
         return () => {
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
@@ -75,7 +65,7 @@ const VideoPage: React.FC = () => {
         if (!url) return '';
         const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
         const match = url.match(regExp);
-        return (match && match[2].length === 11) ? match[2] : '';
+        return match && match[2].length === 11 ? match[2] : '';
     };
 
     const handleProgress = (state: { playedSeconds: number }) => {
@@ -84,19 +74,38 @@ const VideoPage: React.FC = () => {
 
     const handleSeek = (time: number) => {
         setSeekTo(time);
-        // Reset seekTo after a short delay to allow re-seeking to same timestamp
         setTimeout(() => setSeekTo(null), 100);
     };
 
-    const handleDownloadPdf = async () => {
+    const handleDownloadAiNotesPdf = async () => {
         if (id) {
-            window.open(`http://localhost:8000/api/v1/reports/${id}/download?type=pdf`, '_blank');
+            try {
+                await downloadAiNotesPdf(id);
+            } catch (error) {
+                console.error('Failed to download AI notes PDF:', error);
+                alert('Failed to download AI notes PDF. Please try again.');
+            }
         }
     };
 
+    const handleDownloadUploadedNotesPdf = async () => {
+        if (id) {
+            try {
+                await downloadUploadedNotesPdf(id);
+            } catch (error) {
+                console.error('Failed to download uploaded notes PDF:', error);
+                alert('This video has no uploaded notes yet.');
+            }
+        }
+    };
 
     if (!report || Object.keys(report).length === 0) {
-        return <div className="flex justify-center items-center h-screen bg-zinc-950 text-zinc-400">Loading...</div>;
+        return (
+            <div className="flex flex-col justify-center items-center h-screen bg-zinc-950 text-zinc-400 gap-4">
+                <Loader className="animate-spin text-white" size={32} />
+                <p className="text-lg font-medium">Fetching video details...</p>
+            </div>
+        );
     }
 
     return (
@@ -106,9 +115,7 @@ const VideoPage: React.FC = () => {
                 <Link to="/" className="p-2 hover:bg-zinc-800/50 rounded-full transition-all text-zinc-400 hover:text-white group">
                     <ArrowLeft size={20} className="group-hover:-translate-x-0.5 transition-transform" />
                 </Link>
-                <h1 className="text-xl font-bold tracking-tight text-white/90 uppercase">
-                    AskTube
-                </h1>
+                <h1 className="text-xl font-bold tracking-tight text-white/90 uppercase">AskTube</h1>
             </header>
 
             {/* Main Content */}
@@ -116,12 +123,7 @@ const VideoPage: React.FC = () => {
                 {/* Left Panel: Video */}
                 <div className="flex-1 bg-black flex flex-col justify-center relative border-r border-zinc-800/50 p-6 min-w-0">
                     <div className="w-full h-full border border-zinc-800/50 rounded-xl overflow-hidden shadow-2xl shadow-black/50">
-                        <VideoPlayer
-                            videoId={videoId}
-                            onProgress={handleProgress}
-                            onReady={() => { }}
-                            seekTo={seekTo}
-                        />
+                        <VideoPlayer videoId={videoId} onProgress={handleProgress} onReady={() => { }} seekTo={seekTo} />
                     </div>
                 </div>
 
@@ -134,27 +136,18 @@ const VideoPage: React.FC = () => {
                 </div>
 
                 {/* Right Panel: Tabs */}
-                <div
-                    className="bg-zinc-950 flex flex-col z-20 shrink-0"
-                    style={{ width: sidebarWidth }}
-                >
-                    {/* Tab Headers - Minimalist Style */}
+                <div className="bg-zinc-950 flex flex-col z-20 shrink-0" style={{ width: sidebarWidth }}>
+                    {/* Tab Headers */}
                     <div className="flex border-b border-zinc-800/50 shrink-0 px-4 pt-2 gap-2">
                         <button
                             onClick={() => setActiveTab('chat')}
-                            className={`flex-1 pb-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'chat'
-                                ? 'border-white text-white'
-                                : 'border-transparent text-zinc-500 hover:text-zinc-300'
-                                }`}
+                            className={`flex-1 pb-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'chat' ? 'border-white text-white' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}
                         >
                             Chat
                         </button>
                         <button
                             onClick={() => setActiveTab('notes')}
-                            className={`flex-1 pb-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'notes'
-                                ? 'border-white text-white'
-                                : 'border-transparent text-zinc-500 hover:text-zinc-300'
-                                }`}
+                            className={`flex-1 pb-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'notes' ? 'border-white text-white' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}
                         >
                             Upload Notes
                         </button>
@@ -164,26 +157,24 @@ const VideoPage: React.FC = () => {
                     <div className="flex-1 overflow-y-auto relative bg-zinc-950 no-scrollbar">
                         {activeTab === 'chat' && (
                             <div className="h-full flex flex-col">
-                                <ChatInterface
-                                    videoId={videoId}
-                                    currentTime={currentTime}
-                                    onTimestampClick={handleSeek}
-                                />
+                                <ChatInterface videoId={videoId} currentTime={currentTime} onTimestampClick={handleSeek} />
                             </div>
                         )}
                         {activeTab === 'notes' && (
                             <NotesView
                                 videoId={videoId}
-                                summary={report.artifacts?.summary || "Summary not available yet."}
-                                notes={report.artifacts?.notes || "Detailed notes not available yet."}
-                                onDownloadPdf={handleDownloadPdf}
+                                summary={report?.artifacts?.summary || ''}
+                                notes={report?.artifacts?.notes || ''}
+                                reportStatus={report?.status || 'unknown'}
+                                onDownloadAiNotesPdf={handleDownloadAiNotesPdf}
+                                onDownloadUploadedNotesPdf={handleDownloadUploadedNotesPdf}
                             />
                         )}
                     </div>
                 </div>
             </div>
 
-            {/* Bottom Padding/Bar */}
+            {/* Bottom Bar */}
             <div className="h-8 bg-zinc-950 border-t border-zinc-800/50 w-full shrink-0" />
         </div>
     );

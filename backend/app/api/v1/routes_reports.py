@@ -19,8 +19,9 @@ from ...repositories import report_repo
 from ...db.gridfs import get_gridfs_bucket, download_bytes
 from ...schemas.report import ReportIn, ReportOut, ReportMeta
 from ...services.rag_store import has_index as rag_has_index, get_index_stats, get_chunks
-from ...services.transcript_service import get_transcript_segments_by_id
+from ...services.transcript_service import get_transcript_segments_by_id, extract_video_id
 from ...schemas.video import TranscriptSegment, RagChunk
+from ...services.processing_service import process_report
 
 router = APIRouter()
 
@@ -45,7 +46,6 @@ async def create_process(request: Request, background_tasks: BackgroundTasks, pa
     logger.info(f"Received processing request for URL: {youtube_url} (force_reindex={force_reindex})")
     
     # Extract video_id immediately for early validation and UI responsiveness
-    from ...services.transcript_service import extract_video_id
     try:
         video_id = extract_video_id(youtube_url)
     except ValueError as e:
@@ -54,8 +54,6 @@ async def create_process(request: Request, background_tasks: BackgroundTasks, pa
     report_id = await report_repo.insert_report(db, youtube_url, video_id=video_id)
     logger.info(f"Created report {report_id} for video {video_id}, queuing background task")
     
-    # Lazy import of processing service so that heavy LLM modules are not imported during startup
-    from ...services.processing_service import process_report  # noqa: WPS433
     background_tasks.add_task(process_report, request.app, report_id, youtube_url, force_reindex)
     return {"report_id": report_id}
 
@@ -118,6 +116,131 @@ async def download_report(request: Request, report_id: str, type: str = "html"):
     return StreamingResponse(iter([data]), media_type=media_type, headers={
         "Content-Disposition": f"attachment; filename={filename}"
     })
+
+
+@router.get(
+    "/reports/{report_id}/pdf/ai-notes",
+    summary="Download AI Notes PDF",
+    description="Generate and download a PDF of AI-generated summary and detailed notes.",
+)
+async def download_ai_notes_pdf(request: Request, report_id: str):
+    """Download AI-generated notes as PDF."""
+    db = request.app.state.db
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not configured")
+    
+    doc = await report_repo.get_by_id(db, report_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    video_id = doc.get("video_id", "unknown")
+    video_title = doc.get("title", video_id)
+    youtube_url = doc.get("youtube_url", "")
+    
+    # Get summary and notes from artifacts subdocument
+    artifacts = doc.get("artifacts", {})
+    summary = artifacts.get("summary", "No summary available.")
+    notes = artifacts.get("notes", "No notes available.")
+
+    
+    # Generate PDF
+    from ...services.pdf_exporter import EnhancedPDFExporter
+    exporter = EnhancedPDFExporter()
+    
+    try:
+        pdf_bytes = exporter.generate_ai_notes_pdf(
+            video_id=video_id,
+            video_title=video_title,
+            video_url=youtube_url,
+            summary=summary,
+            notes=notes
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate AI notes PDF: {e}")
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+    
+    # Clean filename
+    safe_filename = "".join(c for c in video_title if c.isalnum() or c in (' ', '-', '_')).strip()
+    safe_filename = safe_filename[:100]  # Limit length
+    filename = f"{safe_filename}_AI_Notes.pdf" if safe_filename else f"{video_id}_AI_Notes.pdf"
+    
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@router.get(
+    "/reports/{report_id}/pdf/uploaded-notes",
+    summary="Download Uploaded Notes PDF",
+    description="Generate and download a PDF of uploaded handwritten notes images.",
+)
+async def download_uploaded_notes_pdf(request: Request, report_id: str):
+    """Download uploaded handwritten notes as PDF."""
+    db = request.app.state.db
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not configured")
+    
+    doc = await report_repo.get_by_id(db, report_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    video_id = doc.get("video_id")
+    if not video_id:
+        raise HTTPException(status_code=400, detail="Video ID not found in report")
+    
+    video_title = doc.get("title", video_id)
+    
+    # Get uploaded files
+    from pathlib import Path
+    upload_dir = Path("data/uploads") / video_id
+    
+    if not upload_dir.exists():
+        raise HTTPException(status_code=404, detail="No uploaded notes found for this video")
+    
+    uploaded_files = []
+    for file_path in upload_dir.glob("*"):
+        if file_path.is_file() and file_path.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+            uploaded_files.append({
+                "filename": file_path.name,
+                "path": str(file_path)
+            })
+    
+    if not uploaded_files:
+        raise HTTPException(status_code=404, detail="No uploaded notes found for this video")
+    
+    # Sort by filename
+    uploaded_files.sort(key=lambda x: x['filename'])
+    
+    # Generate PDF
+    from ...services.pdf_exporter import EnhancedPDFExporter
+    exporter = EnhancedPDFExporter()
+    
+    try:
+        pdf_bytes = exporter.generate_uploaded_notes_pdf(
+            video_id=video_id,
+            video_title=video_title,
+            uploaded_files=uploaded_files
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate uploaded notes PDF: {e}")
+        print(f"DEBUG ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+    
+    # Clean filename
+    title_str = video_title if video_title else video_id
+    safe_filename = "".join(c for c in title_str if c.isalnum() or c in (' ', '-', '_')).strip()
+    safe_filename = safe_filename[:100]  # Limit length
+    filename = f"{safe_filename}_Uploaded_Notes.pdf" if safe_filename else f"{video_id}_Uploaded_Notes.pdf"
+    
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
 
 
 @router.get(

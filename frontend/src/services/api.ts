@@ -107,4 +107,59 @@ export const getCourse = async (courseId: string) => {
     return response.data;
 };
 
+export const downloadAiNotesPdf = async (reportId: string) => {
+    const response = await api.get(`/reports/${reportId}/pdf/ai-notes`, {
+        responseType: 'blob',
+    });
+
+    // Create a download link
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+
+    // Extract filename from Content-Disposition header if available
+    const contentDisposition = response.headers['content-disposition'];
+    let filename = 'AI_Notes.pdf';
+    if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (filenameMatch) {
+            filename = filenameMatch[1];
+        }
+    }
+
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+};
+
+export const downloadUploadedNotesPdf = async (reportId: string) => {
+    const response = await api.get(`/reports/${reportId}/pdf/uploaded-notes`, {
+        responseType: 'blob',
+    });
+
+    // Create a download link
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+
+    // Extract filename from Content-Disposition header if available
+    const contentDisposition = response.headers['content-disposition'];
+    let filename = 'Uploaded_Notes.pdf';
+    if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (filenameMatch) {
+            filename = filenameMatch[1];
+        }
+    }
+
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+};
+
+
 export default api;

@@ -18,7 +18,13 @@ interface Message {
     timestamp?: number;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ videoId, currentTime, onTimestampClick }) => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
@@ -312,6 +318,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ videoId, currentTime, onT
                                         <ReactMarkdown>
                                             {message.content}
                                         </ReactMarkdown>
+                                        {message.citations && message.citations.length > 0 && (
+                                            <div className="mt-2 flex flex-wrap gap-2">
+                                                {message.citations.map((citation, index) => (
+                                                    <button
+                                                        key={index}
+                                                        onClick={() => onTimestampClick(citation.start_sec)}
+                                                        className="text-xs px-2 py-1 rounded hover:opacity-80 transition-opacity flex items-center gap-1"
+                                                        style={{ backgroundColor: '#44444E', color: '#D3DAD9' }}
+                                                        title={citation.text}
+                                                    >
+                                                        <span>▶ {formatTime(citation.start_sec)}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>

@@ -60,8 +60,8 @@ const Dashboard: React.FC = () => {
         try {
             const result = await processVideo(url);
             setUrl('');
-            if (result._id || result.id) {
-                navigate(`/video/${result._id || result.id}`);
+            if (result.report_id || result._id || result.id) {
+                navigate(`/video/${result.report_id || result._id || result.id}`);
             } else {
                 fetchReports();
             }
@@ -92,6 +92,13 @@ const Dashboard: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-zinc-950 p-8">
+            {isProcessing && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center">
+                    <Loader className="w-16 h-16 text-white animate-spin mb-4" />
+                    <h2 className="text-2xl font-bold text-white">Initializing Learning Environment...</h2>
+                    <p className="text-zinc-400 mt-2">This may take a few seconds</p>
+                </div>
+            )}
             <div className="max-w-6xl mx-auto">
                 <header className="mb-12 text-center">
                     <h1 className="text-4xl font-extrabold text-white tracking-tight">
@@ -107,8 +114,8 @@ const Dashboard: React.FC = () => {
                     <button
                         onClick={() => setActiveTab('videos')}
                         className={`px-6 py-3 font-medium transition-all ${activeTab === 'videos'
-                                ? 'text-white border-b-2 border-white'
-                                : 'text-zinc-500 hover:text-zinc-300'
+                            ? 'text-white border-b-2 border-white'
+                            : 'text-zinc-500 hover:text-zinc-300'
                             }`}
                     >
                         Recent Videos
@@ -116,8 +123,8 @@ const Dashboard: React.FC = () => {
                     <button
                         onClick={() => setActiveTab('courses')}
                         className={`px-6 py-3 font-medium transition-all ${activeTab === 'courses'
-                                ? 'text-white border-b-2 border-white'
-                                : 'text-zinc-500 hover:text-zinc-300'
+                            ? 'text-white border-b-2 border-white'
+                            : 'text-zinc-500 hover:text-zinc-300'
                             }`}
                     >
                         My Courses
@@ -147,12 +154,12 @@ const Dashboard: React.FC = () => {
                                     {isProcessing ? (
                                         <>
                                             <Loader className="animate-spin" size={18} />
-                                            Processing
+                                            Analyzing...
                                         </>
                                     ) : (
                                         <>
+                                            <Play size={18} className="fill-current" />
                                             Start Learning
-                                            <Play size={18} fill="currentColor" />
                                         </>
                                     )}
                                 </button>
@@ -180,8 +187,8 @@ const Dashboard: React.FC = () => {
                                                 </div>
                                             )}
                                             <div className={`absolute top-3 right-3 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${report.status === 'succeeded' ? 'bg-green-500/90 text-white' :
-                                                    report.status === 'failed' ? 'bg-red-500/90 text-white' :
-                                                        'bg-yellow-500/90 text-black'
+                                                report.status === 'failed' ? 'bg-red-500/90 text-white' :
+                                                    'bg-yellow-500/90 text-black'
                                                 }`}>
                                                 {report.status}
                                             </div>
