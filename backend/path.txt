@@ -1,3 +1,0 @@
-File: C:\Users\chava\Desktop\Projects\asktube\.venv\Lib\site-packages\youtube_transcript_api\__init__.py
-Version: unknown
-Path: ['C:\\Users\\chava\\Desktop\\Projects\\asktube\\.venv\\Lib\\site-packages\\youtube_transcript_api']
