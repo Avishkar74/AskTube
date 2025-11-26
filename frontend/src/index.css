@@ -1,0 +1,58 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Nunito+Sans:wght@400;600;700&display=swap');
+
+@layer base {
+  :root {
+    --color-bg: #181C24;
+    --color-surface: #232635;
+    --color-primary: #00B2FF;
+    --color-secondary: #33FFCC;
+    --color-success: #33E681;
+    --color-error: #F75E5E;
+    --color-info: #FFD54F;
+    --color-text: #F6F6F7;
+    --color-text-muted: #9CA3AF;
+    --color-border: #2A2F3E;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-opacity-80 backdrop-blur-md border border-white/5;
+  }
+  
+  .btn-primary {
+    background: linear-gradient(90deg, #00B2FF 0%, #33FFCC 100%);
+    @apply text-slate-900 font-bold px-6 py-3 rounded-xl transition-all hover:shadow-[0_0_20px_rgba(0,178,255,0.3)] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none;
+  }
+
+  .btn-secondary {
+    @apply bg-surface border border-primary/30 text-white font-semibold px-6 py-3 rounded-xl transition-all hover:bg-surface/80 hover:border-primary/60 active:scale-95;
+  }
+
+  .card {
+    @apply bg-surface rounded-2xl border border-white/5 shadow-lg;
+  }
+
+  .input-field {
+    @apply bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

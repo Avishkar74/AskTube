@@ -1,0 +1,205 @@
+[0.08s] Hey guys, welcome back to the channel.
+[2.48s] Today we're diving into an insane new AI
+[5.20s] tool, Z.AI chat, powered by the GLM 4.6
+[9.44s] and GLM 4.5 models. This platform is
+[12.72s] absolutely loaded with features. You can
+[15.12s] create AI powered slides to instantly
+[17.28s] generate professional PPTs, and it even
+[19.92s] comes with ready-made templates and HTML
+[22.24s] code output.
+[24.00s] Next up, the magic design option lets
+[26.16s] you create stunning social media banners
+[28.32s] and post designs in seconds.
+[31.84s] There's also a deep research mode and a
+[33.76s] codewriting feature for developers.
+[36.64s] And the highlight, you can even build
+[38.64s] full stack applications using the full
+[40.64s] stack option just like lovable or bolt.
+[43.60s] The best part, it's completely free and
+[45.84s] open source. I'll select the full stack
+[48.88s] option and paste my prompt here. I'm
+[51.52s] building an Excel to JSON converter
+[53.60s] website with database integration and
+[55.60s] authentication. Just hit the submit
+[57.68s] button. The GLM 4.6 model is analyzing
+[61.52s] our prompt and setting up the project.
+[63.76s] You can see it's using Nex.js, Tailwind
+[66.24s] CSS, shed CN UI, and Prisma with SQL
+[69.52s] light setup as well. Now, it has created
+[71.84s] a to-do list and it's executing each
+[74.00s] step one by one. The first to-do is
+[76.48s] installing the Excel SX library which is
+[79.12s] used to read Excel files. See, it
+[81.36s] started installing and now it has moved
+[83.36s] on to the next task, updating the Prisma
+[85.52s] schema. That one's completed, too. Next,
+[88.72s] it's moving to the to-do for building
+[90.64s] the main page UI design. It's super
+[93.12s] fast. Now, only tasks number five and
+[95.12s] six are pending. We just need to wait a
+[97.04s] few seconds for them to finish. You can
+[99.12s] see the website preview appearing now.
+[101.04s] And look at that. All the to-dos are
+[102.96s] completed. Now, it's checking for any
+[105.04s] ESLint issues. So, let's wait a few
+[107.04s] seconds again. And done. The website is
+[109.52s] now fully completed. It has created a
+[112.00s] file upload interface, file conversion
+[114.32s] functionality, and several other useful
+[116.40s] features as well. You can see it's
+[119.04s] running on NextJS15 with TypeScript. For
+[122.24s] now, it's using SQLite by default, but
+[124.72s] we can switch to Superbase later if
+[126.64s] needed. This is the folder structure it
+[128.96s] generated. Before checking out the
+[130.56s] website, let's take a look at the code.
+[132.48s] Click on the code preview toggle button.
+[135.28s] Here's the SQL database setup. Prisma
+[137.84s] with an example schema and the Nex.js
+[140.08s] app router code all neatly organized.
+[142.80s] The folder structure is completely
+[144.40s] professional. And finally, there's the
+[146.32s] shad CN components JSON file. The best
+[149.76s] part, you can download the entire
+[152.16s] project source code. That's awesome. You
+[154.48s] can even modify it as you like and
+[156.16s] deploy it anywhere. Now we can check the
+[158.56s] website. We're able to open it in a new
+[160.72s] tab easily and see everything clearly.
+[163.76s] Let's test it. I'll upload a sample
+[165.60s] Excel file here and click submit. It
+[168.00s] instantly generates the JSON output. You
+[170.32s] can see the response. It successfully
+[172.32s] converted my Excel data into JSON format
+[174.88s] and everything looks perfect. Awesome.
+[177.28s] That's exactly what we needed. There's
+[179.52s] also an option to download the JSON
+[181.52s] file. Let's click and check. Nice. It's
+[183.68s] working perfectly. Now, if we go to the
+[185.92s] history tab, we can see the converted
+[188.16s] file history being stored. Currently,
+[190.56s] it's using the SQL light database for
+[192.48s] this. Before switching to superbase, I
+[194.96s] want to improve the UI design to make it
+[196.96s] look even better. So for that, I'll open
+[199.20s] the tweak CN website. Using this, we can
+[202.08s] easily customize beautiful shed CN
+[204.32s] themes.
+[206.00s] Click the start button. Here you can see
+[208.32s] all the available themes. Let's switch
+[210.48s] through them one by one to check which
+[212.16s] one suits our design best. There are a
+[214.48s] lot of great options, but I'll go with
+[216.24s] the last one. I really like this one.
+[217.84s] It's called Violet Bloom. Now click the
+[220.48s] code option. You'll see two ways to
+[222.72s] apply the theme. Either install it using
+[224.72s] PNPM or simply copy and paste the CSS
+[227.60s] code. I'll just copy the CSS code here.
+[231.04s] Now I'm going to the GLM chat, pasting
+[233.60s] the CSS code there, and hitting submit.
+[236.40s] The agent will automatically update our
+[238.40s] theme. It usually takes around 30 to 40
+[241.12s] seconds. And done. The theme has been
+[243.60s] changed. Everything looks so much better
+[245.76s] compared to the previous version. It
+[247.60s] even includes a dark mode exactly like
+[249.76s] the one we copied. looks clean and
+[251.92s] professional now. Now we'll integrate
+[254.96s] Superbase into our project. For that,
+[257.12s] open Superbase and create a new project
+[259.20s] for the website. Once it's created,
+[261.36s] click the connect button, then go to the
+[263.76s] app framework tab. Since we're using the
+[266.16s] NextJS app router, copy the environment
+[268.72s] keys provided there. Next, go back to
+[271.04s] the agent, paste those environment keys,
+[273.36s] and also share the Next.js Superbase
+[275.52s] docs URL with it. This helps the agent
+[277.76s] understand and set up Superbase
+[279.28s] correctly. Then just type integrate
+[281.44s] Superbase and hit submit. The agent will
+[283.84s] start working on it.
+[286.24s] It creates a new to-do list again and
+[288.32s] the first task is installing the
+[289.92s] necessary Superbase packages. Nice.
+[292.48s] We'll wait about a minute for that to
+[293.92s] complete.
+[295.52s] Now the agent has finished the setup,
+[297.52s] but there's one more step we need to do
+[299.28s] manually. The agent mentions that we
+[301.28s] need to open the Superbase dashboard, go
+[303.60s] to the SQL editor, and paste the
+[305.52s] provided SQL queries. So I'll copy those
+[307.84s] SQL queries now and open the SQL editor
+[310.16s] in Superbase.
+[312.32s] Here I'll paste the SQL queries and
+[314.48s] click the run button. This will generate
+[316.48s] our table inside Superbase. And there it
+[319.04s] is. We got the success message. Now open
+[321.60s] the tables menu. You can see our
+[323.68s] conversion history table has been
+[325.12s] created. Awesome. Superbase is now fully
+[327.92s] connected to our app. Next, I'll upload
+[330.88s] a sample Excel file here and click
+[333.04s] submit. It's generating the JSON output
+[335.44s] perfectly. Now if you go to the history
+[337.68s] tab, you'll notice the data is being
+[339.92s] saved, but this time it's stored in the
+[342.00s] superbase table, not in SQL light. After
+[344.96s] refreshing, the data appears instantly.
+[347.20s] Everything's working flawlessly. You can
+[349.12s] even create multiple tables in the same
+[350.96s] way if needed.
+[352.88s] Now we're going to integrate Superbase
+[354.88s] email authentication. Enter the prompt
+[357.20s] integrate off and hit submit. The agent
+[359.68s] will handle the Superbase integration
+[361.36s] automatically. We've received the new
+[363.60s] to-do list for this task. The first step
+[365.92s] is to install the authentication
+[367.60s] package. So let's wait a few seconds for
+[369.52s] that to finish.
+[371.44s] While it's installing, open Superbase.
+[373.52s] Go to authentication providers and
+[376.40s] disable the email confirmation. This is
+[378.64s] just for development purposes so we
+[380.40s] don't get any verification emails. You
+[382.56s] can reenable it later in production. Now
+[385.20s] the agent is creating the signin and
+[387.12s] signup pages. Once that's done, our app
+[389.92s] now requires a login to access it. But
+[392.56s] before logging in, we need to run a few
+[394.48s] SQL queries in Superbase. The GLM agent
+[397.28s] has already provided the SQL query. So,
+[399.44s] copy it and open the SQL editor in
+[401.60s] Superbase.
+[403.44s] Here, I'll paste the queries and hit the
+[405.44s] run button.
+[409.68s] You'll see an error because the history
+[411.36s] table already exists. So, go ahead and
+[413.52s] delete the previous table. Then, run the
+[415.68s] query again. This time, it works
+[417.60s] successfully. You'll notice something
+[419.76s] new. The updated history table now
+[421.84s] includes a user ID column. That means
+[424.32s] every conversion history record will be
+[426.24s] linked to the loggedin user. Now open
+[428.88s] the website and try signing up.
+[432.48s] Enter your username, email address, and
+[434.72s] password. Then click sign up. The user
+[437.52s] is created instantly. Next, log in with
+[440.24s] the same email and password. Click sign
+[442.48s] in and it works perfectly.
+[444.40s] Authentication is fully functional. Now
+[446.88s] to confirm, open the Superbase
+[448.80s] dashboard. users table. You'll see the
+[451.44s] newly created user record there. Our
+[453.92s] website is now fully integrated with
+[455.68s] Superbase authentication. Everything's
+[457.84s] connected and working smoothly.
+[460.40s] Thanks for watching. If you found this
+[462.24s] video helpful, don't forget to like,
+[464.00s] subscribe, and turn on the bell icon for
+[465.92s] more awesome tech content. See you in
+[468.08s] the next one.

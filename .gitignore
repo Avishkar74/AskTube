@@ -1,13 +1,25 @@
-# Ignore everything
-*
+# Environment variables
+.env
+.env.local
 
-# Unignore directories
-!frontend/
-!backend/
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
 
-# Unignore essential files
-!.gitignore
-!README.md
-!PRD.md
-!TRD.md
-!QUICKSTART.md
+# IDEs
+.vscode/
+.idea/
+
+# Project specific
+backend_data/
+cache/
+conversations/
+outputs/
+vector_store/
+working_steps/
+.claude/
+
+# Invalid files
+nul

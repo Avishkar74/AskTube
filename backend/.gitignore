@@ -60,3 +60,6 @@ report_*.html
 *.html
 data/
 data/**
+
+# Invalid files
+nul

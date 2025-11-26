@@ -1,0 +1,159 @@
+Here is the updated Technical Requirements Document (TRD) tailored to your constraints:
+- Only Gemini API key (no other paid services)
+- No mobile app
+- No browser extension (for now)
+- Keep optional features that don’t require extra paid vendors
+
+Title
+YouTube Learning Assistant (LangChain + Gemini + React)
+
+Overview (Updated – Synced with current implementation)
+A full-stack web app that takes a YouTube URL, launches a single processing pipeline (transcript → summary → structured notes → mind map → HTML/PDF artifact) and enables chat/Q&A about the video with optional semantic/timestamp retrieval (RAG). The backend (FastAPI) now consolidates artifact generation behind one `POST /api/v1/process` endpoint and exposes reports/status, config, chat, and video introspection endpoints. Frontend (React + TypeScript) consumes these consolidated APIs. Only Gemini is a paid dependency; all other components are free/local.
+
+Objectives
+- Convert YouTube content into high-quality learning artifacts.
+- Enable conversational Q&A grounded in the video’s transcript.
+- Provide a reliable workflow even when YouTube blocks caption fetches.
+- Avoid any extra paid APIs or platforms beyond Gemini.
+
+Out of scope
+- Mobile apps (native or PWA-specific features).
+- Browser extension.
+- Paid vector DBs, paid observability stacks, or hosted proxy services.
+
+Functional Requirements (Reconciled)
+1) Input & Transcript
+  - Accept YouTube URL → derive `video_id`.
+  - Fetch transcript via youtube-transcript-api (implemented); manual paste fallback (planned).
+  - Transcript segments used for timing-aware chunking (implemented in RAG index builder).
+  - Caching by `video_id` implicit via local artifacts / index existence.
+
+2) Unified Processing Pipeline (Implemented)
+  - Single endpoint `POST /api/v1/process` spawns background task performing transcript fetch → summary → notes → mind map → HTML/PDF export → GridFS store → report status update.
+  - Replaces separate generation endpoints in original TRD for MVP simplicity.
+
+3) Learning Outputs (Current vs Planned)
+  - Implemented: Summary, structured notes, mind map (Mermaid syntax stored), HTML/PDF artifact.
+  - Planned: Memory aids (mnemonics), Sticky notes bullets, rendered mind map PNG.
+
+4) Chat (Implemented with RAG optional)
+  - Endpoint: `POST /api/v1/chat` supports `youtube_url` or `video_id`, semantic/top_k retrieval or timestamp window.
+  - Persistent conversation memory (planned); currently stateless single-shot.
+
+5) Retrieval Augmentation (Implemented Core)
+  - Local FAISS index per video with timing metadata; semantic & timestamp queries; citations emitted with chunk indices and start/end seconds.
+  - Auto-build during processing pipeline; force rebuild flag reserved.
+
+6) PDF/HTML Export (Implemented)
+  - HTML (or PDF fallback) stored in GridFS; downloaded via `/api/v1/reports/{id}/download?type=html|pdf`.
+  - Future: Add memory aids/sticky notes sections and mind map image embedding.
+
+7) Persistence (Partial)
+  - Reports collection (implemented).
+  - Transcript/future conversation persistence (planned; transcripts currently fetched ad hoc; conversation memory absent).
+  - File-based fallback still to implement.
+
+8) Security & Operations
+  - Secrets in environment (.env). No client exposure.
+  - CORS configured; `X-Request-ID` exposed for tracing.
+  - Input validation via Pydantic models.
+  - Rate limiting not yet implemented (planned).
+
+9) Observability
+  - Loguru logging with request ID middleware (implemented).
+  - Structured logging enrichment planned (method/path/status/duration).
+  - LangSmith tracing off by default.
+
+Non-functional requirements
+- Performance: p95 < 2.5s for cached responses; LLM calls dependent on Gemini.
+- Reliability: graceful fallback to manual transcript.
+- Cost: zero additional paid services; no third-party paid proxies, DBs, or observability.
+- Maintainability: modular services, typed schemas, clear README.
+
+System Architecture (Updated)
+- Frontend (React + TS + Vite + Tailwind) – planned components unchanged.
+- Backend Routers (current): health/ready, reports (process/list/get/download + video rag/transcript/chunks), chat, config.
+- Services: transcript_service, processing_service (pipeline), rag_store (FAISS), chat_service (RAG + fallback), llm_backend abstraction, gridfs helpers.
+- Planned additions: memory service (conversation persistence), rate limiting middleware, file storage adapter.
+
+API Endpoints (Actual + Planned)
+- GET /api/v1/health, /api/v1/ready
+- POST /api/v1/process → {report_id}
+- GET /api/v1/reports?limit=&offset=&video_id=
+- GET /api/v1/reports/{id}
+- GET /api/v1/reports/{id}/download?type=html|pdf
+- GET /api/v1/videos/{video_id}/rag
+- GET /api/v1/videos/{video_id}/transcript (live fetch segments)
+- GET /api/v1/videos/{video_id}/chunks (RAG chunk list)
+- POST /api/v1/chat (RAG/timestamp aware)
+- GET /api/v1/config
+Planned future endpoints (post-MVP): tricks, sticky notes, manual transcript upload, conversation history, rate limit status.
+
+Data Model (Current + Future)
+- reports: { _id, youtube_url, video_id?, title?, status, artifacts{html_file_id?, pdf_file_id?}, created_at, updated_at, error? }
+- (future) conversations: { user_id, video_id, messages[], created_at, updated_at, summary?, notes?, tricks?, sticky_notes?, mermaid_code? }
+- (future) transcripts cache: { video_id, items[], cached_at }
+- (future) pdfs/artifacts: superseded by GridFS metadata inside reports.
+
+Config and environment
+- Required: GOOGLE_API_KEY/GEMINI_API_KEY
+- Optional: MONGODB_URI (or local default), MONGODB_DB
+- Optional: REDIS_URL (skip if not using Redis)
+- APP_ENV, LOG_LEVEL, CORS_ALLOWED_ORIGINS
+- LANGCHAIN_TRACING_V2, LANGCHAIN_API_KEY (default off)
+- GEMINI_MODEL, TEMPERATURE, MAX_TOKENS
+- RATE_LIMIT_CALLS, RATE_LIMIT_PERIOD
+- HTTPS_PROXY/HTTP_PROXY (optional)
+
+Dependencies (no paid vendors)
+- Backend: fastapi, uvicorn, motor (if Mongo), pymongo, langchain, langchain-google-genai, langchain-community, youtube-transcript-api, pyppeteer, python-dotenv, pydantic, pydantic-settings
+- Optional local-only: faiss-cpu (for RAG) if supported on your OS; otherwise skip RAG
+- Frontend: react, typescript, vite, tailwindcss, @tanstack/react-query, mermaid
+
+Error handling and UX
+- Transcript fetch:
+  - Distinguish RequestBlocked / NoTranscriptFound / TranscriptsDisabled
+  - If blocked → immediate front-end prompt to paste transcript manually
+- LLM:
+  - Retry on 429/5xx with backoff
+- PDF:
+  - If pyppeteer unavailable, return a clear error with install hints
+- All routes:
+  - Return consistent JSON error schema with code and message
+
+Rate limiting and caching (free)
+- In-memory token bucket for rate limiting in the API process
+- Cache transcripts and LLM results (in-memory or JSON file). If Mongo available, use it for persistence.
+
+Testing (Updated Plan)
+- Existing: health, request logging tests.
+- Needed: process lifecycle (queued→running→succeeded), report listing pagination, artifact download, chat with RAG citations, video transcript/chunks endpoints.
+- Future: manual transcript fallback, memory aids generation, sticky notes, rate limiting.
+
+Risks and mitigations
+- YouTube IP blocks:
+  - Mitigation: manual transcript paste; optional proxy env (user-provided, free)
+- LLM costs/timeouts:
+  - Mitigation: caching, smaller model variant for drafts, retry/backoff
+- Limited storage:
+  - Mitigation: local disk cleanup policy for PDFs; configurable retention
+
+Milestones (Realigned)
+- M1 (DONE core): Processing pipeline, reports CRUD, health/ready, config.
+- M2 (IN PROGRESS): Chat endpoint + RAG, artifact download.
+- M3 (NEXT): Memory aids, sticky notes, conversation persistence.
+- M4: Rate limiting, structured logging, file-based fallback storage.
+- M5: Docker Compose, CI pipeline, retention & cleanup, manual transcript upload UI.
+
+Acceptance Criteria (Phase‑based)
+- MVP: Given a YouTube URL, user can start processing and later download HTML/PDF containing summary, notes, mind map; chat returns an answer (with citations when RAG active). Health shows Mongo status.
+- Post‑MVP: Memory aids + sticky notes visible in artifact; conversation memory retained; manual transcript path available when auto fetch fails.
+- Cost boundary: No paid services beyond Gemini.
+- UX: Clear error messaging for transcript failures and artifact unavailability.
+
+Deployment
+- Local dev: Docker compose for Mongo (optional), uvicorn reload
+- Single-node deployment on any free-tier VM/container with local Mongo or file-based persistence
+
+This TRD includes all features you want now, plus optional and later features that don’t require additional paid vendors, and explicitly excludes mobile apps and browser extensions.
+\n+LLM Model Usage & Selection\n+Chat / Generation: qwen2.5:7b via Ollama (default in OllamaBackend). All interactive answers (chat endpoint and pipeline summary/notes/mindmap generators when they call the backend) currently resolve to Qwen unless you explicitly request Gemini.\n+Gemini: Backend support exists (GeminiBackend) but it’s effectively dormant / avoided due to rate limits and key constraints. Fallback logic tries Ollama first; if Gemini isn’t needed it won’t be called.\n+Embeddings (RAG): sentence-transformers/all-MiniLM-L6-v2 (from rag_store.py). This is an embedding model only (not used to generate answers) and powers FAISS similarity + timestamp window retrieval.\n+Pipeline Artifacts: The summary, notes, and mind map generation modules import an LLM backend lazily; with current config they also end up using Qwen.\n+\n+How Selection Works\n+Chat: If you don’t pass backend, code calls auto_select_backend("ollama", model) which chooses Qwen if available; Gemini only if Ollama fails and key is present.\n+RAG: Independent of generation backend—embeddings always MiniLM.\n+\n+Future Adjustments (Planned)\n+- Config flag to force Gemini for summaries while keeping chat on Qwen.\n+- Optional lighter local model for faster draft summaries.\n+- Caching layer for Gemini calls to mitigate rate limits.\n*** End Patch
